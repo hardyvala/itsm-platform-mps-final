@@ -61,6 +61,12 @@ func (m *SyncManager) InitGraph(ctx context.Context) error {
 
 // HandleEvent processes events and syncs to graph
 func (m *SyncManager) HandleEvent(ctx context.Context, event nats.Event) error {
+	// Check if graph sync is enabled for this entity
+	node := m.graph.GetNode(capitalize(event.Entity))
+	if node == nil || !node.Graph.Sync {
+		return nil // Skip if graph sync is not enabled
+	}
+
 	switch event.Action {
 	case "created":
 		return m.createNode(ctx, event)
@@ -194,33 +200,51 @@ func (m *SyncManager) createEdges(ctx context.Context, event nats.Event) error {
 	return nil
 }
 
-// buildProperties builds Cypher properties object
+// buildProperties builds Cypher properties object using DSL sync_properties
 func (m *SyncManager) buildProperties(node *dsl.Node, data map[string]interface{}) string {
 	var props []string
 
-	// Always include id and tenant_id
-	if id, ok := data["id"]; ok {
-		props = append(props, fmt.Sprintf("id: '%v'", id))
-	}
-	if tenantID, ok := data["tenant_id"]; ok {
-		props = append(props, fmt.Sprintf("tenant_id: '%v'", tenantID))
+	// Use sync_properties from DSL if available, otherwise use all properties
+	var propertiesToSync []string
+	if len(node.Graph.SyncProperties) > 0 {
+		propertiesToSync = node.Graph.SyncProperties
+	} else {
+		// Fallback to essential properties
+		propertiesToSync = []string{"id", "tenant_id"}
+		for _, prop := range node.Properties {
+			if prop.Name != "id" && prop.Name != "tenant_id" &&
+				prop.Name != "created_at" && prop.Name != "updated_at" &&
+				prop.Name != "deleted_at" && prop.Name != "version" {
+				propertiesToSync = append(propertiesToSync, prop.Name)
+			}
+		}
 	}
 
-	// Add other properties from node definition
-	for _, prop := range node.Properties {
-		if prop.Name == "id" || prop.Name == "tenant_id" {
-			continue
-		}
-		if val, ok := data[prop.Name]; ok && val != nil {
-			switch prop.Type {
-			case "text", "enum", "uuid":
-				props = append(props, fmt.Sprintf("%s: '%v'", prop.Name, val))
-			case "boolean":
-				props = append(props, fmt.Sprintf("%s: %v", prop.Name, val))
-			case "integer":
-				props = append(props, fmt.Sprintf("%s: %v", prop.Name, val))
+	// Build properties based on sync configuration
+	for _, propName := range propertiesToSync {
+		if val, ok := data[propName]; ok && val != nil {
+			// Find property definition for type information
+			var propType string = "text" // default
+			for _, prop := range node.Properties {
+				if prop.Name == propName {
+					propType = prop.Type
+					break
+				}
+			}
+
+			switch propType {
+			case "text", "enum", "uuid", "timestamptz", "date":
+				props = append(props, fmt.Sprintf("%s: '%v'", propName, val))
+			case "boolean", "bool":
+				props = append(props, fmt.Sprintf("%s: %v", propName, val))
+			case "integer", "int", "bigint", "decimal":
+				props = append(props, fmt.Sprintf("%s: %v", propName, val))
+			case "jsonb", "json":
+				// Stringify JSON for Cypher
+				jsonStr := fmt.Sprintf("%v", val)
+				props = append(props, fmt.Sprintf("%s: '%s'", propName, jsonStr))
 			default:
-				props = append(props, fmt.Sprintf("%s: '%v'", prop.Name, val))
+				props = append(props, fmt.Sprintf("%s: '%v'", propName, val))
 			}
 		}
 	}

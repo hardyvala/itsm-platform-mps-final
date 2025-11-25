@@ -374,6 +374,7 @@ Modify the business logic in the handlers to customize behavior.
 func (g *ServiceGenerator) executeTemplate(tmplText string, data interface{}, outputPath string) error {
 	funcMap := template.FuncMap{
 		"title": strings.Title,
+		"lower": strings.ToLower,
 		"slice": func() []string { return make([]string, 0) },
 		"append": func(slice []string, item string) []string {
 			return append(slice, item)

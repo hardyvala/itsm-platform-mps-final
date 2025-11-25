@@ -9,52 +9,242 @@ import (
 
 // ServiceGraph represents the complete DSL for a service
 type ServiceGraph struct {
-	Version  string   `json:"version"`
-	Kind     string   `json:"kind"`
-	Metadata Metadata `json:"metadata"`
-	Nodes    []Node   `json:"nodes"`
-	Edges    []Edge   `json:"edges"`
-	Events   Events   `json:"events"`
+	Version      string             `json:"version"`
+	Kind         string             `json:"kind"`
+	Metadata     Metadata           `json:"metadata"`
+	Platform     *PlatformConfig    `json:"platform,omitempty"`
+	Nodes        []Node             `json:"nodes"`
+	Edges        []Edge             `json:"edges,omitempty"`
+	Events       Events             `json:"events"`
+	API          *APIConfig         `json:"api,omitempty"`
+	Dependencies []DependencyConfig `json:"dependencies,omitempty"`
 }
 
 type Metadata struct {
-	Service  string `json:"service"`
-	Database string `json:"database"`
-	Port     int    `json:"port"`
-	Package  string `json:"package,omitempty"`
-	Version  string `json:"version,omitempty"`
+	Service     string          `json:"service"`
+	Namespace   string          `json:"namespace,omitempty"`
+	Database    string          `json:"database"`
+	Host        string          `json:"host,omitempty"`
+	Port        int             `json:"port"`
+	Replicas    int             `json:"replicas,omitempty"`
+	Package     string          `json:"package,omitempty"`
+	Version     string          `json:"version,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Resources   *ResourceConfig `json:"resources,omitempty"`
+	PoolSize    int             `json:"pool_size,omitempty"`
+}
+
+type ResourceConfig struct {
+	Requests ResourceSpec `json:"requests,omitempty"`
+	Limits   ResourceSpec `json:"limits,omitempty"`
+}
+
+type ResourceSpec struct {
+	CPU    string `json:"cpu,omitempty"`
+	Memory string `json:"memory,omitempty"`
+}
+
+// Platform configuration
+type PlatformConfig struct {
+	Defaults  DefaultConfig   `json:"defaults"`
+	Messaging MessagingConfig `json:"messaging"`
+	Database  DatabaseConfig  `json:"database"`
+}
+
+type DefaultConfig struct {
+	IDStrategy string           `json:"id_strategy"`
+	IDFallback string           `json:"id_fallback"`
+	Timestamps TimestampConfig  `json:"timestamps"`
+	SoftDelete SoftDeleteConfig `json:"soft_delete"`
+	Versioning VersionConfig    `json:"versioning"`
+	Audit      AuditConfig      `json:"audit"`
+	Tenant     TenantConfig     `json:"tenant"`
+}
+
+type TimestampConfig struct {
+	CreatedAt bool `json:"created_at"`
+	UpdatedAt bool `json:"updated_at"`
+	DeletedAt bool `json:"deleted_at"`
+}
+
+type SoftDeleteConfig struct {
+	Enabled  bool   `json:"enabled"`
+	Strategy string `json:"strategy"`
+}
+
+type VersionConfig struct {
+	Enabled           bool   `json:"enabled"`
+	Field             string `json:"field"`
+	OptimisticLocking bool   `json:"optimistic_locking"`
+}
+
+type AuditConfig struct {
+	Enabled      bool `json:"enabled"`
+	TrackChanges bool `json:"track_changes"`
+}
+
+type TenantConfig struct {
+	Isolation string `json:"isolation"`
+	Column    string `json:"column"`
+}
+
+type MessagingConfig struct {
+	Provider       string `json:"provider"`
+	Jetstream      bool   `json:"jetstream"`
+	URL            string `json:"url"`
+	SubjectPattern string `json:"subject_pattern"`
+}
+
+type DatabaseConfig struct {
+	Type       string   `json:"type"`
+	Version    string   `json:"version"`
+	Extensions []string `json:"extensions"`
+}
+
+// API configuration
+type APIConfig struct {
+	BasePath string        `json:"base_path"`
+	Gateway  GatewayConfig `json:"gateway"`
+	Routes   []RouteConfig `json:"routes"`
+}
+
+type GatewayConfig struct {
+	Type         string     `json:"type"`
+	RoutePattern string     `json:"route_pattern"`
+	Auth         AuthConfig `json:"auth"`
+}
+
+type AuthConfig struct {
+	Type         string `json:"type"`
+	TenantHeader string `json:"tenant_header"`
+}
+
+type RouteConfig struct {
+	Entity string        `json:"entity"`
+	CRUD   bool          `json:"crud"`
+	Path   string        `json:"path"`
+	Custom []CustomRoute `json:"custom,omitempty"`
+}
+
+type CustomRoute struct {
+	Method  string `json:"method"`
+	Path    string `json:"path"`
+	Handler string `json:"handler"`
+}
+
+// Dependencies
+type DependencyConfig struct {
+	App       string   `json:"app"`
+	Required  bool     `json:"required"`
+	Endpoints []string `json:"endpoints"`
 }
 
 // Node represents an entity (graph node = DB table)
 type Node struct {
-	Name       string      `json:"name"`
-	Table      string      `json:"table"`
-	Properties []Property  `json:"properties"`
-	Indexes    []Index     `json:"indexes"`
-	DAL        DALConfig   `json:"dal"`
-	Relations  []Relation  `json:"relations,omitempty"`
-	Hooks      HookConfig  `json:"hooks,omitempty"`
-	Graph      GraphConfig `json:"graph,omitempty"`
+	Name           string             `json:"name"`
+	Table          string             `json:"table"`
+	Schema         string             `json:"schema,omitempty"`
+	Description    string             `json:"description,omitempty"`
+	Properties     []Property         `json:"properties"`
+	References     []Reference        `json:"references,omitempty"`
+	ManyToMany     []ManyToManyConfig `json:"many_to_many,omitempty"`
+	ComputedFields []ComputedField    `json:"computed_fields,omitempty"`
+	Indexes        []Index            `json:"indexes,omitempty"`
+	Validations    []ValidationRule   `json:"validations,omitempty"`
+	DAL            DALConfig          `json:"dal"`
+	Relations      []Relation         `json:"relations,omitempty"`
+	Hooks          HookConfig         `json:"hooks,omitempty"`
+	CRUD           CRUDConfig         `json:"crud,omitempty"`
+	Views          []ViewConfig       `json:"views,omitempty"`
+	Graph          GraphConfig        `json:"graph,omitempty"`
 }
 
 type Property struct {
 	Name            string      `json:"name"`
 	Type            string      `json:"type"`
 	Primary         bool        `json:"primary,omitempty"`
+	Generator       string      `json:"generator,omitempty"`
 	Required        bool        `json:"required,omitempty"`
-	Indexed         bool        `json:"indexed,omitempty"`
+	Nullable        bool        `json:"nullable,omitempty"`
+	Indexed         interface{} `json:"indexed,omitempty"` // can be bool or string
+	Unique          bool        `json:"unique,omitempty"`
 	UniquePerTenant bool        `json:"unique_per_tenant,omitempty"`
+	Immutable       bool        `json:"immutable,omitempty"`
+	Searchable      bool        `json:"searchable,omitempty"`
+	TrackHistory    bool        `json:"track_history,omitempty"`
 	MaxLength       int         `json:"max_length,omitempty"`
 	Default         interface{} `json:"default,omitempty"`
 	Values          []string    `json:"values,omitempty"` // For enum type
 	Precision       int         `json:"precision,omitempty"`
 	Scale           int         `json:"scale,omitempty"`
+	Validation      string      `json:"validation,omitempty"`
+	Description     string      `json:"description,omitempty"`
+	AutoGenerate    *AutoGen    `json:"auto_generate,omitempty"`
+}
+
+type AutoGen struct {
+	Strategy string `json:"strategy"`
+	Format   string `json:"format"`
 }
 
 type Index struct {
+	Name       string   `json:"name"`
+	Fields     []string `json:"fields,omitempty"`
+	Type       string   `json:"type,omitempty"`
+	Expression string   `json:"expression,omitempty"`
+	Unique     bool     `json:"unique,omitempty"`
+	Where      string   `json:"where,omitempty"`
+}
+
+// New types for enhanced DSL
+type Reference struct {
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Nullable bool   `json:"nullable,omitempty"`
+	Indexed  string `json:"indexed,omitempty"`
+	Service  string `json:"service,omitempty"`
+	Entity   string `json:"entity,omitempty"`
+	Field    string `json:"field,omitempty"`
+	LocalRef string `json:"local_ref,omitempty"`
+}
+
+type ManyToManyConfig struct {
+	Name          string     `json:"name"`
+	TargetEntity  string     `json:"target_entity"`
+	JunctionTable string     `json:"junction_table"`
+	LocalKey      string     `json:"local_key"`
+	ForeignKey    string     `json:"foreign_key"`
+	ExtraFields   []Property `json:"extra_fields,omitempty"`
+}
+
+type ComputedField struct {
+	Name       string `json:"name"`
+	Formula    string `json:"formula"`
+	ReturnType string `json:"return_type"`
+}
+
+type CRUDConfig struct {
+	Create CRUDOperation `json:"create"`
+	Update CRUDOperation `json:"update"`
+	Delete CRUDOperation `json:"delete"`
+	Read   CRUDOperation `json:"read"`
+}
+
+type CRUDOperation struct {
+	GraphNode    bool     `json:"graph_node,omitempty"`
+	GraphEdges   bool     `json:"graph_edges,omitempty"`
+	EmitEvent    bool     `json:"emit_event,omitempty"`
+	SyncGraph    bool     `json:"sync_graph,omitempty"`
+	SoftDelete   bool     `json:"soft_delete,omitempty"`
+	DefaultLimit int      `json:"default_limit,omitempty"`
+	MaxLimit     int      `json:"max_limit,omitempty"`
+	Include      []string `json:"include,omitempty"`
+}
+
+type ViewConfig struct {
 	Name   string   `json:"name"`
-	Fields []string `json:"fields"`
-	Unique bool     `json:"unique,omitempty"`
+	Filter string   `json:"filter"`
+	Sort   []string `json:"sort"`
 }
 
 type DALConfig struct {
@@ -124,6 +314,13 @@ type HookDefinition struct {
 	Actions     []string         `json:"actions,omitempty"`
 	Rules       []BusinessRule   `json:"rules,omitempty"`
 	Triggers    []Trigger        `json:"triggers,omitempty"`
+	Checks      []string         `json:"checks,omitempty"`
+	PreventIf   []PreventRule    `json:"prevent_if,omitempty"`
+}
+
+type PreventRule struct {
+	Condition string `json:"condition"`
+	Message   string `json:"message"`
 }
 
 type ValidationRule struct {
@@ -147,14 +344,17 @@ type Trigger struct {
 // GraphConfig represents graph/visualization configuration
 type GraphConfig struct {
 	Label          string      `json:"label"`
+	Sync           bool        `json:"sync,omitempty"`
 	SyncProperties []string    `json:"sync_properties"`
 	Edges          []GraphEdge `json:"edges"`
 }
 
 type GraphEdge struct {
-	Type string `json:"type"`
-	To   string `json:"to"`
-	Via  string `json:"via"`
+	Type       string   `json:"type"`
+	To         string   `json:"to"`
+	Via        string   `json:"via,omitempty"`
+	Direction  string   `json:"direction,omitempty"`
+	Properties []string `json:"properties,omitempty"`
 }
 
 // Parser loads DSL from file

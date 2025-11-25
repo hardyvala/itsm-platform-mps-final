@@ -13,7 +13,9 @@ import (
 {{break}}{{end}}{{break}}{{end}}	dalclient "itsm-platform/services/dal-service/client"
 	"itsm-platform/sdk/dsl"
 	natssdk "itsm-platform/sdk/nats"
-	"{{.ServiceName}}-service/handlers"
+	graphsync "itsm-platform/sdk/graph"
+	"{{.ServiceName}}-service/handlers"{{range $node := .Nodes}}{{if $node.Graph.Sync}}
+	"github.com/jackc/pgx/v5/pgxpool"{{break}}{{end}}{{end}}
 )
 
 type {{.ServiceNamePascal}}Service struct {
@@ -21,6 +23,7 @@ type {{.ServiceNamePascal}}Service struct {
 	dal         *dalclient.Client
 	handlers    *handlers.{{.ServiceNamePascal}}Handlers
 	graph       *dsl.ServiceGraph
+	graphSync   *graphsync.SyncManager
 }
 
 func main() {
@@ -47,12 +50,31 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Initialize graph synchronization if enabled
+	var graphSync *graphsync.SyncManager
+	if hasGraphSyncEnabled(graph) {
+		// Connect to database for graph sync
+		dbURL := getEnv("DATABASE_URL", "postgres://itsm_user:itsm_pass@localhost/itsm_db")
+		dbPool, err := connectToDatabase(dbURL)
+		if err != nil {
+			log.Printf("Failed to connect to database for graph sync: %v", err)
+		} else {
+			graphSync = graphsync.NewSyncManager(dbPool, graph)
+			if err := graphSync.InitGraph(context.Background()); err != nil {
+				log.Printf("Failed to initialize graph: %v", err)
+			} else {
+				log.Printf("Graph synchronization initialized for {{.ServiceName}}")
+			}
+		}
+	}
+
 	// Create service
 	service := &{{.ServiceNamePascal}}Service{
 		natsManager: natsManager,
 		dal:         dalClient,
-		handlers:    handlers.New{{.ServiceNamePascal}}Handlers(dalClient, natsManager.GetConnection()),
+		handlers:    handlers.New{{.ServiceNamePascal}}Handlers(dalClient, natsManager.GetConnection(), graphSync),
 		graph:       graph,
+		graphSync:   graphSync,
 	}
 
 	// Setup NATS subscriptions
@@ -125,4 +147,35 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// hasGraphSyncEnabled checks if any nodes have graph sync enabled
+func hasGraphSyncEnabled(graph *dsl.ServiceGraph) bool {
+	for _, node := range graph.Nodes {
+		if node.Graph.Sync {
+			return true
+		}
+	}
+	return false
+}
+
+// connectToDatabase connects to PostgreSQL for graph operations
+func connectToDatabase(dbURL string) (*pgxpool.Pool, error) {
+	config, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		return nil, err
+	}
+	
+	ctx := context.Background()
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Test the connection
+	if err := pool.Ping(ctx); err != nil {
+		return nil, err
+	}
+	
+	return pool, nil
 }

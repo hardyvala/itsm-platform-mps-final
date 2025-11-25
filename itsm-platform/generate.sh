@@ -17,7 +17,6 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}=== ITSM Platform DAL-Based Code Generator ===${NC}"
-echo -e "${YELLOW}Generates services that use DAL client (no manual DB logic)${NC}"
 echo ""
 
 # Function to generate service from DSL
@@ -35,10 +34,10 @@ generate_service() {
     echo "   Output: $OUTPUT_DIR/$service_name-service"
     
     # Use the new DAL client-based generator
-    go run "$SCRIPT_DIR/cmd/codegen" -dsl "$dsl_path" -output "$OUTPUT_DIR"
+    go run "$SCRIPT_DIR/cmd/codegen" -service "$service_name" -output "$OUTPUT_DIR"
     
     if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Generated $service_name-service (uses DAL client)${NC}"
+        echo -e "${GREEN}✓ Generated $service_name-service successfully!${NC}"
         echo ""
     else
         echo -e "${RED}✗ Failed to generate $service_name-service${NC}"
@@ -144,7 +143,6 @@ if [ -d "$OUTPUT_DIR" ]; then
     find "$OUTPUT_DIR" -name "*.go" -type f | sort
     echo ""
     echo -e "${GREEN}🎉 Code generation completed!${NC}"
-    echo -e "${BLUE}All generated services use DAL client (no manual DB logic)${NC}"
 else
     echo "No files generated"
 fi
