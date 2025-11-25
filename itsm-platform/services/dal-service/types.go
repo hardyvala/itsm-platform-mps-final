@@ -72,33 +72,57 @@ type DSLDefinition struct {
 	Kind     string           `json:"kind"`
 	Metadata ServiceMetadata  `json:"metadata"`
 	Nodes    []NodeDefinition `json:"nodes"`
-	Edges    []EdgeDefinition `json:"edges"`
+	Edges    []EdgeDefinition `json:"edges,omitempty"`
+	Events   EventsDefinition `json:"events,omitempty"`
 }
 
 type ServiceMetadata struct {
-	Service string `json:"service"`
-	Version string `json:"version"`
+	Service  string `json:"service"`
+	Database string `json:"database"`
+	Port     int    `json:"port"`
+	Package  string `json:"package,omitempty"`
+	Version  string `json:"version,omitempty"`
+}
+
+type EventsDefinition struct {
+	Stream    string                     `json:"stream"`
+	Publish   []PublishEventDefinition   `json:"publish"`
+	Subscribe []SubscribeEventDefinition `json:"subscribe"`
+}
+
+type PublishEventDefinition struct {
+	Event   string `json:"event"`
+	Subject string `json:"subject"`
+}
+
+type SubscribeEventDefinition struct {
+	Subject string `json:"subject"`
+	Handler string `json:"handler"`
 }
 
 type NodeDefinition struct {
-	Name       string               `json:"name"`
-	Table      string               `json:"table"`
-	Properties []PropertyDefinition `json:"properties"`
-	Indexes    []IndexDefinition    `json:"indexes"`
-	DAL        DALConfig            `json:"dal"`
+	Name       string                `json:"name"`
+	Table      string                `json:"table"`
+	Properties []PropertyDefinition  `json:"properties"`
+	Indexes    []IndexDefinition     `json:"indexes"`
+	DAL        DALConfig             `json:"dal"`
+	Relations  []RelationDefinition  `json:"relations,omitempty"`
+	Hooks      HookConfigDefinition  `json:"hooks,omitempty"`
+	Graph      GraphConfigDefinition `json:"graph,omitempty"`
 }
 
 type PropertyDefinition struct {
-	Name            string   `json:"name"`
-	Type            string   `json:"type"`
-	Required        bool     `json:"required,omitempty"`
-	Indexed         bool     `json:"indexed,omitempty"`
-	UniquePerTenant bool     `json:"unique_per_tenant,omitempty"`
-	MaxLength       int      `json:"max_length,omitempty"`
-	Default         string   `json:"default,omitempty"`
-	Values          []string `json:"values,omitempty"`
-	Precision       int      `json:"precision,omitempty"`
-	Scale           int      `json:"scale,omitempty"`
+	Name            string      `json:"name"`
+	Type            string      `json:"type"`
+	Primary         bool        `json:"primary,omitempty"`
+	Required        bool        `json:"required,omitempty"`
+	Indexed         bool        `json:"indexed,omitempty"`
+	UniquePerTenant bool        `json:"unique_per_tenant,omitempty"`
+	MaxLength       int         `json:"max_length,omitempty"`
+	Default         interface{} `json:"default,omitempty"`
+	Values          []string    `json:"values,omitempty"`
+	Precision       int         `json:"precision,omitempty"`
+	Scale           int         `json:"scale,omitempty"`
 }
 
 type IndexDefinition struct {
@@ -120,4 +144,61 @@ type EdgeDefinition struct {
 type DALConfig struct {
 	SoftDelete     bool `json:"soft_delete"`
 	OptimisticLock bool `json:"optimistic_lock"`
+}
+
+// Additional types to match SDK structure
+type RelationDefinition struct {
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	TargetService string `json:"target_service"`
+	TargetNode    string `json:"target_node"`
+	LocalField    string `json:"local_field"`
+	TargetField   string `json:"target_field"`
+}
+
+type HookConfigDefinition struct {
+	PreCreate  HookDefinition `json:"pre_create,omitempty"`
+	PostCreate HookDefinition `json:"post_create,omitempty"`
+	PreUpdate  HookDefinition `json:"pre_update,omitempty"`
+	PostUpdate HookDefinition `json:"post_update,omitempty"`
+	PreDelete  HookDefinition `json:"pre_delete,omitempty"`
+	PostDelete HookDefinition `json:"post_delete,omitempty"`
+}
+
+type HookDefinition struct {
+	Enabled     bool                     `json:"enabled"`
+	Validations []ValidationDefinition   `json:"validations,omitempty"`
+	Actions     []string                 `json:"actions,omitempty"`
+	Rules       []BusinessRuleDefinition `json:"rules,omitempty"`
+	Triggers    []TriggerDefinition      `json:"triggers,omitempty"`
+}
+
+type ValidationDefinition struct {
+	Field   string      `json:"field"`
+	Rule    string      `json:"rule"`
+	Value   interface{} `json:"value,omitempty"`
+	Message string      `json:"message"`
+}
+
+type BusinessRuleDefinition struct {
+	Condition string `json:"condition"`
+	Action    string `json:"action"`
+	Message   string `json:"message"`
+}
+
+type TriggerDefinition struct {
+	OnFieldChange string `json:"on_field_change"`
+	Action        string `json:"action"`
+}
+
+type GraphConfigDefinition struct {
+	Label          string                `json:"label"`
+	SyncProperties []string              `json:"sync_properties"`
+	Edges          []GraphEdgeDefinition `json:"edges"`
+}
+
+type GraphEdgeDefinition struct {
+	Type string `json:"type"`
+	To   string `json:"to"`
+	Via  string `json:"via"`
 }
