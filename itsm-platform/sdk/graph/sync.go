@@ -12,8 +12,8 @@ import (
 
 // SyncManager keeps Apache AGE graph in sync with PostgreSQL
 type SyncManager struct {
-	db       *pgxpool.Pool
-	graph    *dsl.ServiceGraph
+	db        *pgxpool.Pool
+	graph     *dsl.ServiceGraph
 	graphName string
 }
 

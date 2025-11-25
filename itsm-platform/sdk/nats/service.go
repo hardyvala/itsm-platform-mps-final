@@ -6,8 +6,9 @@ import (
 	"log"
 	"strings"
 
-	"github.com/nats-io/nats.go"
 	"itsm-platform/sdk/dsl"
+
+	"github.com/nats-io/nats.go"
 )
 
 // ServiceManager handles all NATS operations for a service
