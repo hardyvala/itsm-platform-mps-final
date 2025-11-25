@@ -1,0 +1,415 @@
+{
+  "version": "2.0",
+  "kind": "GraphSchema",
+  "metadata": {
+    "name": "platform_graph",
+    "description": "Unified graph schema for all services across the platform",
+    "engine": "apache_age",
+    "per_tenant": true,
+    "name_template": "tenant_${tenant_id}_graph"
+  },
+
+  "configuration": {
+    "engine": "apache_age",
+    "database": "graph_db",
+    "service": "graph-service",
+    "isolation": "per_tenant",
+    "sync": {
+      "enabled": true,
+      "strategy": "eventual_consistency",
+      "batch_size": 100,
+      "interval_seconds": 5
+    },
+    "indexing": {
+      "strategy": "automatic",
+      "types": ["btree", "hash", "gin"]
+    },
+    "caching": {
+      "enabled": true,
+      "ttl_seconds": 300,
+      "max_size_mb": 100
+    }
+  },
+
+  "nodes": [
+    {
+      "label": "Ticket",
+      "source": {
+        "service": "ticket",
+        "entity": "Ticket",
+        "table": "tickets"
+      },
+      "properties": [
+        {"name": "id", "type": "string", "indexed": true, "unique": true},
+        {"name": "tenant_id", "type": "string", "indexed": true, "required": true},
+        {"name": "ticket_number", "type": "string", "indexed": true, "unique_per_tenant": true},
+        {"name": "summary", "type": "string", "searchable": true, "max_length": 500},
+        {"name": "severity", "type": "string", "indexed": true, "enum": ["P0", "P1", "P2", "P3", "P4"]},
+        {"name": "status", "type": "string", "indexed": true, "enum": ["open", "in_progress", "pending", "resolved", "closed"]},
+        {"name": "priority", "type": "string", "indexed": true, "enum": ["critical", "high", "medium", "low"]},
+        {"name": "created_at", "type": "timestamp", "indexed": true},
+        {"name": "updated_at", "type": "timestamp"},
+        {"name": "resolved_at", "type": "timestamp", "nullable": true},
+        {"name": "sla_due_at", "type": "timestamp", "indexed": true, "nullable": true}
+      ],
+      "computed": [
+        {"name": "age_hours", "formula": "EXTRACT(EPOCH FROM (NOW() - created_at)) / 3600", "type": "decimal"},
+        {"name": "is_overdue", "formula": "sla_due_at < NOW() AND status NOT IN ('resolved', 'closed')", "type": "boolean"}
+      ]
+    },
+    {
+      "label": "Comment",
+      "source": {
+        "service": "ticket",
+        "entity": "Comment",
+        "table": "comments"
+      },
+      "properties": [
+        {"name": "id", "type": "string", "indexed": true, "unique": true},
+        {"name": "tenant_id", "type": "string", "indexed": true, "required": true},
+        {"name": "author_type", "type": "string", "enum": ["agent", "customer", "system"]},
+        {"name": "is_internal", "type": "boolean", "default": false},
+        {"name": "created_at", "type": "timestamp", "indexed": true}
+      ]
+    },
+    {
+      "label": "Customer",
+      "source": {
+        "service": "customer",
+        "entity": "Customer",
+        "table": "customers"
+      },
+      "properties": [
+        {"name": "id", "type": "string", "indexed": true, "unique": true},
+        {"name": "tenant_id", "type": "string", "indexed": true, "required": true},
+        {"name": "customer_number", "type": "string", "indexed": true, "unique_per_tenant": true},
+        {"name": "name", "type": "string", "searchable": true, "max_length": 255},
+        {"name": "email", "type": "string", "indexed": true, "unique_per_tenant": true},
+        {"name": "plan", "type": "string", "indexed": true, "enum": ["free", "starter", "professional", "enterprise"]},
+        {"name": "status", "type": "string", "indexed": true, "enum": ["active", "inactive", "churned", "prospect"]},
+        {"name": "lifetime_value", "type": "decimal", "precision": 15, "scale": 2},
+        {"name": "created_at", "type": "timestamp", "indexed": true}
+      ]
+    },
+    {
+      "label": "Organization",
+      "source": {
+        "service": "customer",
+        "entity": "Organization",
+        "table": "organizations"
+      },
+      "properties": [
+        {"name": "id", "type": "string", "indexed": true, "unique": true},
+        {"name": "tenant_id", "type": "string", "indexed": true, "required": true},
+        {"name": "name", "type": "string", "searchable": true, "max_length": 255},
+        {"name": "domain", "type": "string", "indexed": true, "nullable": true},
+        {"name": "industry", "type": "string", "nullable": true},
+        {"name": "size", "type": "string", "enum": ["small", "medium", "large", "enterprise"], "nullable": true}
+      ]
+    },
+    {
+      "label": "Asset",
+      "source": {
+        "service": "asset",
+        "entity": "Asset",
+        "table": "assets"
+      },
+      "properties": [
+        {"name": "id", "type": "string", "indexed": true, "unique": true},
+        {"name": "tenant_id", "type": "string", "indexed": true, "required": true},
+        {"name": "tag", "type": "string", "indexed": true, "unique_per_tenant": true},
+        {"name": "name", "type": "string", "searchable": true},
+        {"name": "category", "type": "string", "indexed": true, "enum": ["hardware", "software", "network", "service", "other"]},
+        {"name": "status", "type": "string", "indexed": true, "enum": ["active", "inactive", "maintenance", "retired", "disposed"]},
+        {"name": "warranty_expiry", "type": "date", "indexed": true, "nullable": true},
+        {"name": "cost", "type": "decimal", "precision": 15, "scale": 2, "nullable": true}
+      ],
+      "computed": [
+        {"name": "is_under_warranty", "formula": "warranty_expiry >= CURRENT_DATE", "type": "boolean"}
+      ]
+    },
+    {
+      "label": "Location",
+      "source": {
+        "service": "asset",
+        "entity": "Location",
+        "table": "locations"
+      },
+      "properties": [
+        {"name": "id", "type": "string", "indexed": true, "unique": true},
+        {"name": "tenant_id", "type": "string", "indexed": true, "required": true},
+        {"name": "name", "type": "string", "indexed": true},
+        {"name": "type", "type": "string", "enum": ["building", "floor", "room", "rack", "virtual"]},
+        {"name": "coordinates", "type": "jsonb", "nullable": true}
+      ]
+    }
+  ],
+
+  "edges": [
+    {
+      "type": "REPORTED_BY",
+      "from": "Ticket",
+      "to": "Customer",
+      "cardinality": "many_to_one",
+      "cross_service": true,
+      "source_service": "ticket",
+      "target_service": "customer",
+      "properties": [
+        {"name": "reported_at", "type": "timestamp", "auto": true},
+        {"name": "channel", "type": "string", "enum": ["email", "phone", "web", "api"]}
+      ],
+      "indexes": ["from_id", "to_id", "reported_at"]
+    },
+    {
+      "type": "AFFECTS",
+      "from": "Ticket",
+      "to": "Asset",
+      "cardinality": "many_to_many",
+      "cross_service": true,
+      "source_service": "ticket",
+      "target_service": "asset",
+      "junction_table": "ticket_assets",
+      "properties": [
+        {"name": "impact_level", "type": "string", "enum": ["critical", "high", "medium", "low"]},
+        {"name": "linked_at", "type": "timestamp", "auto": true},
+        {"name": "linked_by", "type": "string", "nullable": true}
+      ],
+      "indexes": ["from_id", "to_id", "impact_level"]
+    },
+    {
+      "type": "RELATED_TO",
+      "from": "Ticket",
+      "to": "Ticket",
+      "cardinality": "many_to_many",
+      "bidirectional": true,
+      "properties": [
+        {"name": "relation_type", "type": "string", "enum": ["duplicate", "related", "parent", "child"]},
+        {"name": "created_at", "type": "timestamp", "auto": true},
+        {"name": "created_by", "type": "string", "nullable": true}
+      ],
+      "indexes": ["from_id", "to_id", "relation_type"]
+    },
+    {
+      "type": "BLOCKED_BY",
+      "from": "Ticket",
+      "to": "Ticket",
+      "cardinality": "many_to_many",
+      "properties": [
+        {"name": "blocked_since", "type": "timestamp", "auto": true},
+        {"name": "reason", "type": "string", "nullable": true},
+        {"name": "blocked_by", "type": "string", "nullable": true}
+      ],
+      "indexes": ["from_id", "to_id", "blocked_since"]
+    },
+    {
+      "type": "COMMENTED_ON",
+      "from": "Comment",
+      "to": "Ticket",
+      "cardinality": "many_to_one",
+      "properties": [
+        {"name": "created_at", "type": "timestamp", "auto": true}
+      ],
+      "indexes": ["from_id", "to_id", "created_at"]
+    },
+    {
+      "type": "AUTHORED_BY",
+      "from": "Comment",
+      "to": "Customer",
+      "cardinality": "many_to_one",
+      "cross_service": true,
+      "nullable": true,
+      "properties": [
+        {"name": "created_at", "type": "timestamp", "auto": true}
+      ],
+      "indexes": ["from_id", "to_id"]
+    },
+    {
+      "type": "MENTIONS",
+      "from": "Comment",
+      "to": "Ticket",
+      "cardinality": "many_to_many",
+      "inferred": true,
+      "properties": [
+        {"name": "confidence", "type": "float", "min": 0, "max": 1},
+        {"name": "mention_type", "type": "string", "enum": ["reference", "link", "tag"]},
+        {"name": "detected_at", "type": "timestamp", "auto": true}
+      ]
+    },
+    {
+      "type": "BELONGS_TO_ORG",
+      "from": "Customer",
+      "to": "Organization",
+      "cardinality": "many_to_one",
+      "properties": [
+        {"name": "since", "type": "timestamp", "auto": true},
+        {"name": "role", "type": "string", "enum": ["owner", "admin", "member"], "default": "member"}
+      ],
+      "indexes": ["from_id", "to_id"]
+    },
+    {
+      "type": "OWNED_BY",
+      "from": "Asset",
+      "to": "Customer",
+      "cardinality": "many_to_one",
+      "cross_service": true,
+      "source_service": "asset",
+      "target_service": "customer",
+      "properties": [
+        {"name": "ownership_start", "type": "timestamp", "auto": true},
+        {"name": "ownership_type", "type": "string", "enum": ["purchased", "leased", "rented", "assigned"]},
+        {"name": "contract_id", "type": "string", "nullable": true}
+      ],
+      "indexes": ["from_id", "to_id", "ownership_start"]
+    },
+    {
+      "type": "LOCATED_AT",
+      "from": "Asset",
+      "to": "Location",
+      "cardinality": "many_to_one",
+      "properties": [
+        {"name": "since", "type": "timestamp", "auto": true},
+        {"name": "placement", "type": "string", "nullable": true}
+      ],
+      "indexes": ["from_id", "to_id"]
+    },
+    {
+      "type": "DEPENDS_ON",
+      "from": "Asset",
+      "to": "Asset",
+      "cardinality": "many_to_many",
+      "junction_table": "asset_dependencies",
+      "properties": [
+        {"name": "dependency_type", "type": "string", "enum": ["requires", "uses", "contains"]},
+        {"name": "criticality", "type": "string", "enum": ["critical", "important", "optional"]},
+        {"name": "created_at", "type": "timestamp", "auto": true}
+      ],
+      "indexes": ["from_id", "to_id", "dependency_type", "criticality"]
+    },
+    {
+      "type": "REPORTS_TO",
+      "from": "Agent",
+      "to": "Agent",
+      "cardinality": "many_to_one",
+      "properties": [
+        {"name": "since", "type": "timestamp", "auto": true},
+        {"name": "reporting_type", "type": "string", "enum": ["direct", "dotted"], "default": "direct"}
+      ],
+      "indexes": ["from_id", "to_id"]
+    },
+    {
+      "type": "WORKS_IN",
+      "from": "Agent",
+      "to": "Queue",
+      "cardinality": "many_to_many",
+      "properties": [
+        {"name": "role", "type": "string", "enum": ["member", "lead", "backup"]},
+        {"name": "since", "type": "timestamp", "auto": true},
+        {"name": "skill_level", "type": "integer", "min": 1, "max": 5}
+      ],
+      "indexes": ["from_id", "to_id", "role"]
+    },
+    {
+      "type": "SIMILAR_TO",
+      "from": "Ticket",
+      "to": "Ticket",
+      "cardinality": "many_to_many",
+      "inferred": true,
+      "computed": true,
+      "ml_generated": true,
+      "properties": [
+        {"name": "similarity_score", "type": "float", "min": 0, "max": 1},
+        {"name": "method", "type": "string", "enum": ["text_similarity", "category_match", "pattern_analysis"]},
+        {"name": "computed_at", "type": "timestamp", "auto": true},
+        {"name": "confidence", "type": "float", "min": 0, "max": 1}
+      ],
+      "indexes": ["from_id", "to_id", "similarity_score"]
+    },
+    {
+      "type": "FREQUENTLY_AFFECTS",
+      "from": "Ticket",
+      "to": "Asset",
+      "cardinality": "many_to_many",
+      "inferred": true,
+      "computed": true,
+      "ml_generated": true,
+      "properties": [
+        {"name": "frequency", "type": "integer", "min": 1},
+        {"name": "time_window_days", "type": "integer", "default": 30},
+        {"name": "computed_at", "type": "timestamp", "auto": true},
+        {"name": "correlation_strength", "type": "float", "min": 0, "max": 1}
+      ],
+      "indexes": ["from_id", "to_id", "frequency"]
+    }
+  ],
+
+  "queries": {
+    "predefined": [
+      {
+        "name": "ticket_lifecycle",
+        "description": "Get complete lifecycle of a ticket including all related entities",
+        "cypher": "MATCH (t:Ticket {id: $ticket_id})-[*1..3]-(related) RETURN t, related"
+      },
+      {
+        "name": "customer_360",
+        "description": "Get 360-degree view of a customer",
+        "cypher": "MATCH (c:Customer {id: $customer_id})-[*1..2]-(related) RETURN c, related"
+      },
+      {
+        "name": "asset_impact",
+        "description": "Find all tickets affected by an asset",
+        "cypher": "MATCH (a:Asset {id: $asset_id})<-[:AFFECTS]-(t:Ticket) WHERE t.status IN ['open', 'in_progress'] RETURN t"
+      },
+      {
+        "name": "agent_workload",
+        "description": "Get agent's current workload",
+        "cypher": "MATCH (a:Agent {id: $agent_id})<-[:ASSIGNED_TO]-(t:Ticket) WHERE t.status IN ['open', 'in_progress'] RETURN count(t) as workload"
+      }
+    ]
+  },
+
+  "analytics": {
+    "metrics": [
+      {
+        "name": "ticket_resolution_path",
+        "type": "path_analysis",
+        "description": "Analyze common resolution paths for tickets"
+      },
+      {
+        "name": "asset_failure_correlation",
+        "type": "correlation",
+        "description": "Find correlations between asset failures"
+      },
+      {
+        "name": "customer_churn_prediction",
+        "type": "prediction",
+        "description": "Predict customer churn based on ticket patterns"
+      }
+    ]
+  },
+
+  "maintenance": {
+    "cleanup": {
+      "enabled": true,
+      "schedule": "0 2 * * *",
+      "tasks": [
+        {
+          "name": "remove_orphaned_edges",
+          "description": "Remove edges pointing to deleted nodes"
+        },
+        {
+          "name": "rebuild_indexes",
+          "description": "Rebuild graph indexes for performance"
+        },
+        {
+          "name": "compute_inferred_edges",
+          "description": "Recompute ML-generated inferred edges"
+        }
+      ]
+    },
+    "backup": {
+      "enabled": true,
+      "schedule": "0 0 * * *",
+      "retention_days": 30
+    }
+  }
+}

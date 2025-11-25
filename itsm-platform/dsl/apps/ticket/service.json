@@ -1,0 +1,315 @@
+{
+  "version": "2.0",
+  "kind": "ServiceGraph",
+  "metadata": {
+    "service": "ticket",
+    "namespace": "platform.ticket",
+    "database": "ticket_db"
+  },
+  "platform": {
+    "defaults": {
+      "id_strategy": "uuid_v7",
+      "id_fallback": "uuid_v4",
+      "timestamps": {
+        "created_at": true,
+        "updated_at": true,
+        "deleted_at": true
+      },
+      "soft_delete": {
+        "enabled": true,
+        "strategy": "timestamp"
+      },
+      "versioning": {
+        "enabled": true,
+        "field": "version",
+        "optimistic_locking": true
+      },
+      "audit": {
+        "enabled": true,
+        "track_changes": true
+      },
+      "tenant": {
+        "isolation": "schema",
+        "column": "tenant_id"
+      }
+    },
+    "messaging": {
+      "provider": "nats",
+      "jetstream": true,
+      "url": "nats://nats-1:6222",
+      "subject_pattern": "platform.${app}.${tenant}.${entity}.${action}"
+    },
+    "database": {
+      "type": "postgresql",
+      "version": "18",
+      "extensions": ["age", "pg_trgm", "pgvector", "uuid-ossp"]
+    }
+  },
+
+  "nodes": [
+    {
+      "name": "Ticket",
+      "table": "tickets",
+      "schema": "${tenant_schema}",
+      "description": "Support ticket for ITSM/Helpdesk",
+      "properties": [
+        {"name": "id", "type": "uuid", "primary": true, "generator": "uuid_v7"},
+        {"name": "tenant_id", "type": "uuid", "required": true, "indexed": "btree", "immutable": true},
+        {"name": "ticket_number", "type": "text", "unique": true, "indexed": "btree", "auto_generate": {"strategy": "sequence", "format": "TKT-${YYYY}${MM}-${SEQ:6}"}},
+        {"name": "summary", "type": "text", "required": true, "max_length": 500, "searchable": true, "indexed": "trigram"},
+        {"name": "description", "type": "text", "nullable": true, "searchable": true},
+        {"name": "severity", "type": "enum", "values": ["P0", "P1", "P2", "P3", "P4"], "default": "P3", "indexed": "btree"},
+        {"name": "status", "type": "enum", "values": ["open", "in_progress", "pending", "resolved", "closed"], "default": "open", "indexed": "btree", "track_history": true},
+        {"name": "priority", "type": "enum", "values": ["critical", "high", "medium", "low"], "default": "medium", "indexed": "btree"},
+        {"name": "category", "type": "text", "nullable": true, "indexed": "btree"},
+        {"name": "tags", "type": "text[]", "nullable": true, "indexed": "gin"},
+        {"name": "resolution", "type": "text", "nullable": true},
+        {"name": "resolved_at", "type": "timestamptz", "nullable": true},
+        {"name": "first_response_at", "type": "timestamptz", "nullable": true},
+        {"name": "sla_due_at", "type": "timestamptz", "nullable": true, "indexed": "btree"},
+        {"name": "metadata", "type": "jsonb", "nullable": true},
+        {"name": "custom_fields", "type": "jsonb", "nullable": true},
+        {"name": "created_at", "type": "timestamptz", "required": true, "default": "now()"},
+        {"name": "updated_at", "type": "timestamptz", "required": true, "default": "now()"},
+        {"name": "deleted_at", "type": "timestamptz", "nullable": true},
+        {"name": "version", "type": "integer", "default": 1}
+      ],
+      "references": [
+        {"name": "reporter_id", "type": "uuid", "nullable": true, "indexed": "btree", "service": "customer", "entity": "Customer", "field": "id"}
+      ],
+      "many_to_many": [
+        {
+          "name": "affected_assets",
+          "target_service": "asset",
+          "target_entity": "Asset",
+          "junction_table": "ticket_assets",
+          "local_key": "ticket_id",
+          "foreign_key": "asset_id",
+          "extra_fields": [
+            {"name": "impact_level", "type": "enum", "values": ["critical", "high", "medium", "low"], "default": "medium"},
+            {"name": "linked_at", "type": "timestamptz", "auto": true}
+          ]
+        }
+      ],
+      "computed_fields": [
+        {"name": "age_hours", "formula": "EXTRACT(EPOCH FROM (NOW() - created_at)) / 3600", "return_type": "decimal"},
+        {"name": "is_overdue", "formula": "sla_due_at IS NOT NULL AND sla_due_at < NOW() AND status NOT IN ('resolved', 'closed')", "return_type": "boolean"},
+        {"name": "is_escalated", "formula": "severity IN ('P0', 'P1') AND status = 'open'", "return_type": "boolean"}
+      ],
+      "indexes": [
+        {"name": "idx_tickets_tenant_status", "fields": ["tenant_id", "status"]},
+        {"name": "idx_tickets_tenant_severity", "fields": ["tenant_id", "severity", "status"]},
+        {"name": "idx_tickets_sla", "fields": ["tenant_id", "sla_due_at"], "where": "deleted_at IS NULL AND status NOT IN ('resolved', 'closed')"},
+        {"name": "idx_tickets_fulltext", "type": "gin", "expression": "to_tsvector('english', coalesce(summary, '') || ' ' || coalesce(description, ''))"}
+      ],
+      "validations": [
+        {"name": "summary_required", "condition": "LENGTH(TRIM(summary)) > 0", "message": "Summary cannot be empty"},
+        {"name": "resolution_on_resolve", "condition": "status != 'resolved' OR resolution IS NOT NULL", "message": "Resolution required when resolving", "on": ["create", "update"]}
+      ],
+      "dal": {
+        "soft_delete": true,
+        "optimistic_lock": true
+      },
+      "relations": [
+        {
+          "name": "reporter",
+          "type": "belongs_to",
+          "target_service": "customer",
+          "target_node": "Customer",
+          "local_field": "reporter_id",
+          "target_field": "id"
+        },
+        {
+          "name": "comments",
+          "type": "has_many",
+          "target_service": "ticket",
+          "target_node": "Comment",
+          "local_field": "id",
+          "target_field": "ticket_id"
+        },
+        {
+          "name": "assets",
+          "type": "many_to_many",
+          "target_service": "asset",
+          "target_node": "Asset",
+          "junction_table": "ticket_assets"
+        }
+      ],
+      "hooks": {
+        "pre_create": {
+          "enabled": true,
+          "validations": [
+            {"field": "summary", "rule": "min_length", "value": 5, "message": "Summary must be at least 5 characters"},
+            {"field": "reporter_id", "rule": "required", "message": "Reporter is required"}
+          ],
+          "actions": ["validateTicketCreate", "enrichTicketData"]
+        },
+        "post_create": {
+          "enabled": true,
+          "actions": ["notifyNewTicket", "triggerAutoAssign", "calculateSla"]
+        },
+        "pre_update": {
+          "enabled": true,
+          "rules": [
+            {"condition": "old.status == 'closed' && new.status != 'closed'", "action": "reject", "message": "Cannot reopen closed ticket"}
+          ],
+          "actions": ["validateTicketUpdate"]
+        },
+        "post_update": {
+          "enabled": true,
+          "triggers": [
+            {"on_field_change": "status", "action": "handleStatusChange"},
+            {"on_field_change": "assignee_id", "action": "notifyAssignment"}
+          ]
+        },
+        "pre_delete": {
+          "enabled": true,
+          "prevent_if": [
+            {"condition": "status = 'in_progress'", "message": "Cannot delete in-progress tickets"}
+          ]
+        },
+        "post_delete": {
+          "enabled": true,
+          "actions": ["cleanupAttachments"]
+        }
+      },
+      "crud": {
+        "create": {
+          "graph_node": true,
+          "graph_edges": true,
+          "emit_event": true
+        },
+        "update": {
+          "optimistic_locking": true,
+          "sync_graph": true,
+          "emit_event": true
+        },
+        "delete": {
+          "soft_delete": true,
+          "sync_graph": true,
+          "emit_event": true
+        },
+        "read": {
+          "default_limit": 50,
+          "max_limit": 500,
+          "include": ["reporter", "assignee", "queue", "comments", "assets"]
+        }
+      },
+      "views": [
+        {"name": "my_tickets", "filter": "assignee_id = :current_user_id", "sort": ["-created_at"]},
+        {"name": "open_tickets", "filter": "status NOT IN ('resolved', 'closed')", "sort": ["-severity", "-created_at"]},
+        {"name": "overdue_tickets", "filter": "sla_due_at < NOW() AND status NOT IN ('resolved', 'closed')", "sort": ["sla_due_at"]},
+        {"name": "high_priority", "filter": "severity IN ('P0', 'P1') AND status NOT IN ('resolved', 'closed')", "sort": ["-severity", "-created_at"]}
+      ],
+      "graph": {
+        "label": "Ticket",
+        "sync": true,
+        "sync_properties": ["id", "tenant_id", "ticket_number", "summary", "severity", "status", "priority"],
+        "edges": [
+          {"type": "REPORTED_BY", "to": "Customer", "via": "reporter_id", "direction": "out"},
+          {"type": "ASSIGNED_TO", "to": "Agent", "via": "assignee_id", "direction": "out"},
+          {"type": "IN_QUEUE", "to": "Queue", "via": "queue_id", "direction": "out"},
+          {"type": "AFFECTS", "to": "Asset", "direction": "out", "properties": ["impact_level"]}
+        ]
+      }
+    },
+    {
+      "name": "Comment",
+      "table": "comments",
+      "schema": "${tenant_schema}",
+      "description": "Comments on tickets",
+      "properties": [
+        {"name": "id", "type": "uuid", "primary": true, "generator": "uuid_v7"},
+        {"name": "tenant_id", "type": "uuid", "required": true, "indexed": "btree", "immutable": true},
+        {"name": "ticket_id", "type": "uuid", "required": true, "indexed": "btree"},
+        {"name": "body", "type": "text", "required": true, "searchable": true},
+        {"name": "author_id", "type": "uuid", "required": true, "indexed": "btree"},
+        {"name": "author_type", "type": "enum", "values": ["agent", "customer", "system"], "required": true},
+        {"name": "is_internal", "type": "boolean", "default": false},
+        {"name": "metadata", "type": "jsonb", "nullable": true},
+        {"name": "created_at", "type": "timestamptz", "required": true, "default": "now()"},
+        {"name": "updated_at", "type": "timestamptz", "required": true, "default": "now()"},
+        {"name": "deleted_at", "type": "timestamptz", "nullable": true},
+        {"name": "version", "type": "integer", "default": 1}
+      ],
+      "indexes": [
+        {"name": "idx_comments_tenant_ticket", "fields": ["tenant_id", "ticket_id"]},
+        {"name": "idx_comments_created", "fields": ["tenant_id", "created_at"]}
+      ],
+      "dal": {
+        "soft_delete": true,
+        "optimistic_lock": true
+      },
+      "relations": [
+        {
+          "name": "ticket",
+          "type": "belongs_to",
+          "target_service": "ticket",
+          "target_node": "Ticket",
+          "local_field": "ticket_id",
+          "target_field": "id"
+        }
+      ],
+      "hooks": {
+        "pre_create": {
+          "enabled": true,
+          "validations": [
+            {"field": "body", "rule": "min_length", "value": 1, "message": "Comment body is required"}
+          ]
+        },
+        "post_create": {
+          "enabled": true,
+          "actions": ["updateTicketTimestamp", "notifyWatchers"]
+        },
+        "pre_update": {"enabled": false},
+        "post_update": {"enabled": false},
+        "pre_delete": {"enabled": false},
+        "post_delete": {"enabled": false}
+      },
+      "crud": {
+        "create": {
+          "graph_node": true,
+          "graph_edges": true,
+          "emit_event": true
+        },
+        "update": {
+          "sync_graph": true,
+          "emit_event": true
+        },
+        "delete": {
+          "soft_delete": true,
+          "sync_graph": true,
+          "emit_event": true
+        },
+        "read": {
+          "default_limit": 50,
+          "max_limit": 500
+        }
+      },
+      "graph": {
+        "label": "Comment",
+        "sync": true,
+        "sync_properties": ["id", "tenant_id", "author_type", "is_internal", "created_at"],
+        "edges": [
+          {"type": "COMMENTED_ON", "to": "Ticket", "via": "ticket_id", "direction": "out"},
+          {"type": "AUTHORED_BY", "to": "Customer", "via": "author_id", "direction": "out", "nullable": true}
+        ]
+      }
+    }
+  ],
+
+  "events": {
+    "stream": "PLATFORM_EVENTS",
+    "publish": [
+      {"event": "ticket.created", "subject": "platform.ticket.${tenant_id}.ticket.created"},
+      {"event": "ticket.updated", "subject": "platform.ticket.${tenant_id}.ticket.updated"},
+      {"event": "ticket.deleted", "subject": "platform.ticket.${tenant_id}.ticket.deleted"},
+      {"event": "ticket.status.changed", "subject": "platform.ticket.${tenant_id}.ticket.status.changed", "on_field_change": "status"},
+      {"event": "comment.created", "subject": "platform.ticket.${tenant_id}.comment.created"}
+    ],
+    "subscribe": [
+      {"subject": "platform.customer.*.customer.updated", "handler": "handleCustomerUpdated"},
+      {"subject": "platform.customer.*.customer.deleted", "handler": "onCustomerDeleted"}
+    ]
+  }
+}

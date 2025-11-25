@@ -1,0 +1,299 @@
+{
+  "version": "2.0",
+  "kind": "ServiceGraph",
+  "metadata": {
+    "service": "asset",
+    "namespace": "platform.asset",
+    "database": "asset_db"
+  },
+
+  "platform": {
+    "defaults": {
+      "id_strategy": "uuid_v7",
+      "id_fallback": "uuid_v4",
+      "timestamps": {
+        "created_at": true,
+        "updated_at": true,
+        "deleted_at": true
+      },
+      "soft_delete": {
+        "enabled": true,
+        "strategy": "timestamp"
+      },
+      "versioning": {
+        "enabled": true,
+        "field": "version",
+        "optimistic_locking": true
+      },
+      "audit": {
+        "enabled": true,
+        "track_changes": true
+      },
+      "tenant": {
+        "isolation": "schema",
+        "column": "tenant_id"
+      }
+    },
+    "messaging": {
+      "provider": "nats",
+      "jetstream": true,
+      "url": "nats://nats-1:6222",
+      "subject_pattern": "platform.${app}.${tenant}.${entity}.${action}"
+    },
+    "database": {
+      "type": "postgresql",
+      "version": "18",
+      "extensions": ["age", "pg_trgm", "pgvector", "uuid-ossp"]
+    }
+  },
+
+  "nodes": [
+    {
+      "name": "Asset",
+      "table": "assets",
+      "schema": "${tenant_schema}",
+      "description": "IT Asset / Configuration Item",
+      "properties": [
+        {"name": "id", "type": "uuid", "primary": true, "generator": "uuid_v7"},
+        {"name": "tenant_id", "type": "uuid", "required": true, "indexed": "btree", "immutable": true},
+        {"name": "tag", "type": "text", "required": true, "unique_per_tenant": true, "indexed": "btree", "description": "Human-readable asset identifier"},
+        {"name": "name", "type": "text", "required": true, "searchable": true},
+        {"name": "category", "type": "enum", "values": ["hardware", "software", "network", "service", "other"], "default": "hardware", "indexed": "btree"},
+        {"name": "type", "type": "text", "nullable": true, "indexed": "btree", "description": "Sub-type within category"},
+        {"name": "model", "type": "text", "nullable": true, "indexed": "btree"},
+        {"name": "manufacturer", "type": "text", "nullable": true},
+        {"name": "serial_number", "type": "text", "nullable": true, "unique_per_tenant": true},
+        {"name": "status", "type": "enum", "values": ["active", "inactive", "maintenance", "retired", "disposed"], "default": "active", "indexed": "btree", "track_history": true},
+        {"name": "purchase_date", "type": "date", "nullable": true},
+        {"name": "warranty_expiry", "type": "date", "nullable": true, "indexed": "btree"},
+        {"name": "cost", "type": "decimal", "precision": 15, "scale": 2, "nullable": true},
+        {"name": "specifications", "type": "jsonb", "nullable": true, "description": "Technical specifications"},
+        {"name": "metadata", "type": "jsonb", "nullable": true},
+        {"name": "custom_fields", "type": "jsonb", "nullable": true},
+        {"name": "created_at", "type": "timestamptz", "required": true, "default": "now()"},
+        {"name": "updated_at", "type": "timestamptz", "required": true, "default": "now()"},
+        {"name": "deleted_at", "type": "timestamptz", "nullable": true},
+        {"name": "version", "type": "integer", "default": 1}
+      ],
+      "references": [
+        {"name": "owner_id", "type": "uuid", "nullable": true, "indexed": "btree", "service": "customer", "entity": "Customer", "field": "id"},
+        {"name": "location_id", "type": "uuid", "nullable": true, "indexed": "btree", "local_ref": "Location.id"}
+      ],
+      "many_to_many": [
+        {
+          "name": "dependencies",
+          "target_entity": "Asset",
+          "junction_table": "asset_dependencies",
+          "local_key": "parent_asset_id",
+          "foreign_key": "child_asset_id",
+          "extra_fields": [
+            {"name": "dependency_type", "type": "enum", "values": ["requires", "uses", "contains"], "default": "requires"},
+            {"name": "criticality", "type": "enum", "values": ["critical", "important", "optional"], "default": "important"}
+          ]
+        }
+      ],
+      "computed_fields": [
+        {"name": "is_under_warranty", "formula": "warranty_expiry IS NOT NULL AND warranty_expiry >= CURRENT_DATE", "return_type": "boolean"},
+        {"name": "days_until_warranty_expires", "formula": "CASE WHEN warranty_expiry IS NOT NULL THEN (warranty_expiry - CURRENT_DATE) ELSE NULL END", "return_type": "integer"}
+      ],
+      "indexes": [
+        {"name": "idx_assets_tenant_tag", "fields": ["tenant_id", "tag"], "unique": true},
+        {"name": "idx_assets_tenant_category", "fields": ["tenant_id", "category", "status"]},
+        {"name": "idx_assets_warranty", "fields": ["tenant_id", "warranty_expiry"], "where": "status = 'active'"},
+        {"name": "idx_assets_search", "type": "gin", "expression": "to_tsvector('english', coalesce(name, '') || ' ' || coalesce(tag, '') || ' ' || coalesce(model, ''))"}
+      ],
+      "dal": {
+        "soft_delete": true,
+        "optimistic_lock": true
+      },
+      "relations": [
+        {
+          "name": "owner",
+          "type": "belongs_to",
+          "target_service": "customer",
+          "target_node": "Customer",
+          "local_field": "owner_id",
+          "target_field": "id"
+        },
+        {
+          "name": "location",
+          "type": "belongs_to",
+          "target_service": "asset",
+          "target_node": "Location",
+          "local_field": "location_id",
+          "target_field": "id"
+        },
+        {
+          "name": "dependencies",
+          "type": "many_to_many",
+          "target_service": "asset",
+          "target_node": "Asset",
+          "junction_table": "asset_dependencies"
+        }
+      ],
+      "hooks": {
+        "pre_create": {
+          "enabled": true,
+          "validations": [
+            {"field": "tag", "rule": "required", "message": "Asset tag is required"},
+            {"field": "name", "rule": "required", "message": "Asset name is required"}
+          ]
+        },
+        "post_create": {
+          "enabled": true,
+          "actions": ["generateQRCode", "notifyOwner"]
+        },
+        "pre_update": {
+          "enabled": true
+        },
+        "post_update": {
+          "enabled": true,
+          "triggers": [
+            {"on_field_change": "status", "action": "notifyStatusChange"},
+            {"on_field_change": "owner_id", "action": "notifyOwnershipChange"}
+          ]
+        },
+        "pre_delete": {
+          "enabled": true,
+          "checks": ["has_no_dependencies"]
+        },
+        "post_delete": {
+          "enabled": true,
+          "actions": ["cleanupReferences"]
+        }
+      },
+      "crud": {
+        "create": {
+          "graph_node": true,
+          "graph_edges": true,
+          "emit_event": true
+        },
+        "update": {
+          "sync_graph": true,
+          "emit_event": true
+        },
+        "delete": {
+          "soft_delete": true,
+          "sync_graph": true,
+          "emit_event": true
+        },
+        "read": {
+          "default_limit": 50,
+          "max_limit": 500,
+          "include": ["owner", "location", "dependencies"]
+        }
+      },
+      "views": [
+        {"name": "active_assets", "filter": "status = 'active'", "sort": ["category", "name"]},
+        {"name": "expiring_warranty", "filter": "warranty_expiry BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'", "sort": ["warranty_expiry"]},
+        {"name": "unassigned_assets", "filter": "owner_id IS NULL AND status = 'active'", "sort": ["-created_at"]}
+      ],
+      "graph": {
+        "label": "Asset",
+        "sync": true,
+        "sync_properties": ["id", "tenant_id", "tag", "name", "category", "status"],
+        "edges": [
+          {"type": "OWNED_BY", "to": "Customer", "via": "owner_id", "direction": "out"},
+          {"type": "LOCATED_AT", "to": "Location", "via": "location_id", "direction": "out"},
+          {"type": "DEPENDS_ON", "to": "Asset", "direction": "out", "properties": ["dependency_type", "criticality"]}
+        ]
+      }
+    },
+    {
+      "name": "Location",
+      "table": "locations",
+      "schema": "${tenant_schema}",
+      "description": "Physical or logical location for assets",
+      "properties": [
+        {"name": "id", "type": "uuid", "primary": true, "generator": "uuid_v7"},
+        {"name": "tenant_id", "type": "uuid", "required": true, "indexed": "btree", "immutable": true},
+        {"name": "name", "type": "text", "required": true, "indexed": "btree"},
+        {"name": "type", "type": "enum", "values": ["building", "floor", "room", "rack", "virtual"], "default": "room"},
+        {"name": "address", "type": "text", "nullable": true},
+        {"name": "city", "type": "text", "nullable": true},
+        {"name": "country", "type": "text", "nullable": true},
+        {"name": "coordinates", "type": "jsonb", "nullable": true},
+        {"name": "parent_location_id", "type": "uuid", "nullable": true, "indexed": "btree"},
+        {"name": "metadata", "type": "jsonb", "nullable": true},
+        {"name": "created_at", "type": "timestamptz", "required": true, "default": "now()"},
+        {"name": "updated_at", "type": "timestamptz", "required": true, "default": "now()"},
+        {"name": "deleted_at", "type": "timestamptz", "nullable": true},
+        {"name": "version", "type": "integer", "default": 1}
+      ],
+      "indexes": [
+        {"name": "idx_locations_tenant_name", "fields": ["tenant_id", "name"]}
+      ],
+      "dal": {
+        "soft_delete": true,
+        "optimistic_lock": true
+      },
+      "relations": [
+        {
+          "name": "assets",
+          "type": "has_many",
+          "target_service": "asset",
+          "target_node": "Asset",
+          "local_field": "id",
+          "target_field": "location_id"
+        },
+        {
+          "name": "parent_location",
+          "type": "belongs_to",
+          "target_service": "asset",
+          "target_node": "Location",
+          "local_field": "parent_location_id",
+          "target_field": "id"
+        },
+        {
+          "name": "child_locations",
+          "type": "has_many",
+          "target_service": "asset",
+          "target_node": "Location",
+          "local_field": "id",
+          "target_field": "parent_location_id"
+        }
+      ],
+      "crud": {
+        "create": {
+          "graph_node": true,
+          "emit_event": true
+        },
+        "update": {
+          "sync_graph": true,
+          "emit_event": true
+        },
+        "delete": {
+          "soft_delete": true,
+          "sync_graph": true,
+          "emit_event": true
+        },
+        "read": {
+          "default_limit": 50,
+          "max_limit": 500,
+          "include": ["assets", "parent_location", "child_locations"]
+        }
+      },
+      "graph": {
+        "label": "Location",
+        "sync": true,
+        "sync_properties": ["id", "tenant_id", "name", "type"]
+      }
+    }
+  ],
+
+  "events": {
+    "stream": "PLATFORM_EVENTS",
+    "publish": [
+      {"event": "asset.created", "subject": "platform.asset.${tenant_id}.asset.created"},
+      {"event": "asset.updated", "subject": "platform.asset.${tenant_id}.asset.updated"},
+      {"event": "asset.deleted", "subject": "platform.asset.${tenant_id}.asset.deleted"},
+      {"event": "asset.status_changed", "subject": "platform.asset.${tenant_id}.asset.status_changed", "on_field_change": "status"},
+      {"event": "location.created", "subject": "platform.asset.${tenant_id}.location.created"},
+      {"event": "location.updated", "subject": "platform.asset.${tenant_id}.location.updated"},
+      {"event": "location.deleted", "subject": "platform.asset.${tenant_id}.location.deleted"}
+    ],
+    "subscribe": [
+      {"subject": "platform.customer.*.customer.deleted", "handler": "on_customer_deleted"}
+    ]
+  }
+}
