@@ -59,6 +59,14 @@ func main() {
 		log.Fatalf("Failed to start DAL service: %v", err)
 	}
 
+	// Create default tenant for development
+	defaultTenant := getEnv("DEFAULT_TENANT_ID", "default")
+	if err := service.schemas.CreateTenantSchema(context.Background(), defaultTenant); err != nil {
+		log.Printf("Failed to create default tenant schema: %v", err)
+	} else {
+		log.Printf("Created default tenant schema: tenant_%s", defaultTenant)
+	}
+
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig

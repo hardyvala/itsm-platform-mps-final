@@ -63,32 +63,42 @@ func (sm *SchemaManager) CreateServiceSchema(ctx context.Context, tenantID, serv
 
 func (sm *SchemaManager) createTable(ctx context.Context, schema string, node NodeDefinition) error {
 	var columns []string
+	existingCols := make(map[string]bool)
 
-	// Add system columns
-	columns = append(columns,
-		"id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
-		"tenant_id VARCHAR(100) NOT NULL",
-		"created_at TIMESTAMPTZ DEFAULT NOW()",
-		"updated_at TIMESTAMPTZ DEFAULT NOW()",
-		"created_by UUID",
-		"updated_by UUID",
-	)
+	// Add entity properties first (from DSL)
+	for _, prop := range node.Properties {
+		col := sm.buildColumnDefinition(prop)
+		columns = append(columns, col)
+		existingCols[prop.Name] = true
+	}
+
+	// Add system columns if not already defined in DSL
+	systemCols := map[string]string{
+		"created_by": "UUID",
+		"updated_by": "UUID",
+	}
+
+	for colName, colDef := range systemCols {
+		if !existingCols[colName] {
+			columns = append(columns, fmt.Sprintf("%s %s", colName, colDef))
+		}
+	}
 
 	// Add soft delete if configured
 	if node.DAL.SoftDelete {
-		columns = append(columns, "deleted_at TIMESTAMPTZ")
-		columns = append(columns, "deleted_by UUID")
+		if !existingCols["deleted_at"] {
+			columns = append(columns, "deleted_at TIMESTAMPTZ")
+		}
+		if !existingCols["deleted_by"] {
+			columns = append(columns, "deleted_by UUID")
+		}
 	}
 
 	// Add optimistic lock if configured
 	if node.DAL.OptimisticLock {
-		columns = append(columns, "version INTEGER DEFAULT 1")
-	}
-
-	// Add entity properties
-	for _, prop := range node.Properties {
-		col := sm.buildColumnDefinition(prop)
-		columns = append(columns, col)
+		if !existingCols["version"] {
+			columns = append(columns, "version INTEGER DEFAULT 1")
+		}
 	}
 
 	// Build CREATE TABLE statement
@@ -149,12 +159,29 @@ func (sm *SchemaManager) buildColumnDefinition(prop PropertyDefinition) string {
 	}
 
 	// Add constraints
-	if prop.Required {
+	if prop.Primary {
+		col.WriteString(" PRIMARY KEY")
+		if prop.Type == "uuid" {
+			col.WriteString(" DEFAULT gen_random_uuid()")
+		}
+	} else if prop.Required {
 		col.WriteString(" NOT NULL")
 	}
 
-	if prop.Default != "" {
-		col.WriteString(fmt.Sprintf(" DEFAULT %s", prop.Default))
+	if prop.Default != nil {
+		// Handle different default value types
+		switch v := prop.Default.(type) {
+		case string:
+			if v == "now()" {
+				col.WriteString(" DEFAULT NOW()")
+			} else if v != "" {
+				col.WriteString(fmt.Sprintf(" DEFAULT '%s'", v))
+			}
+		case bool:
+			col.WriteString(fmt.Sprintf(" DEFAULT %t", v))
+		case int, int64, float64:
+			col.WriteString(fmt.Sprintf(" DEFAULT %v", v))
+		}
 	}
 
 	if prop.UniquePerTenant {
