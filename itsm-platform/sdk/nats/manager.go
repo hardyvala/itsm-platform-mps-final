@@ -140,9 +140,11 @@ func (em *EventManager) subscribe(ctx context.Context, subjectPattern string) er
 	// For cross-service events, we need to consume from other service's streams
 	streamName := em.inferStreamFromSubject(subjectPattern)
 
-	consumerName := fmt.Sprintf("%s_%s_consumer",
-		em.graph.Metadata.Service,
-		strings.ReplaceAll(subjectPattern, ".", "_"))
+	// Create safe consumer name by replacing special characters
+	safeName := strings.ReplaceAll(subjectPattern, ".", "_")
+	safeName = strings.ReplaceAll(safeName, "*", "wildcard")
+	safeName = strings.ReplaceAll(safeName, ">", "gt")
+	consumerName := fmt.Sprintf("%s_%s_consumer", em.graph.Metadata.Service, safeName)
 
 	consumer, err := em.js.CreateOrUpdateConsumer(ctx, streamName, jetstream.ConsumerConfig{
 		Name:          consumerName,
