@@ -9,15 +9,13 @@ import (
 
 // ServiceGraph represents the complete DSL for a service
 type ServiceGraph struct {
-	Version      string             `json:"version"`
-	Kind         string             `json:"kind"`
-	Metadata     Metadata           `json:"metadata"`
-	Platform     *PlatformConfig    `json:"platform,omitempty"`
-	Nodes        []Node             `json:"nodes"`
-	Edges        []Edge             `json:"edges,omitempty"`
-	Events       Events             `json:"events"`
-	API          *APIConfig         `json:"api,omitempty"`
-	Dependencies []DependencyConfig `json:"dependencies,omitempty"`
+	Version  string          `json:"version"`
+	Kind     string          `json:"kind"`
+	Metadata Metadata        `json:"metadata"`
+	Platform *PlatformConfig `json:"platform,omitempty"`
+	Nodes    []Node          `json:"nodes"`
+	Edges    []Edge          `json:"edges,omitempty"`
+	Events   Events          `json:"events"`
 }
 
 type Metadata struct {
@@ -99,44 +97,6 @@ type DatabaseConfig struct {
 	Type       string   `json:"type"`
 	Version    string   `json:"version"`
 	Extensions []string `json:"extensions"`
-}
-
-// API configuration
-type APIConfig struct {
-	BasePath string        `json:"base_path"`
-	Gateway  GatewayConfig `json:"gateway"`
-	Routes   []RouteConfig `json:"routes"`
-}
-
-type GatewayConfig struct {
-	Type         string     `json:"type"`
-	RoutePattern string     `json:"route_pattern"`
-	Auth         AuthConfig `json:"auth"`
-}
-
-type AuthConfig struct {
-	Type         string `json:"type"`
-	TenantHeader string `json:"tenant_header"`
-}
-
-type RouteConfig struct {
-	Entity string        `json:"entity"`
-	CRUD   bool          `json:"crud"`
-	Path   string        `json:"path"`
-	Custom []CustomRoute `json:"custom,omitempty"`
-}
-
-type CustomRoute struct {
-	Method  string `json:"method"`
-	Path    string `json:"path"`
-	Handler string `json:"handler"`
-}
-
-// Dependencies
-type DependencyConfig struct {
-	App       string   `json:"app"`
-	Required  bool     `json:"required"`
-	Endpoints []string `json:"endpoints"`
 }
 
 // Node represents an entity (graph node = DB table)

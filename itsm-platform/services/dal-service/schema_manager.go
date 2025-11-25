@@ -203,10 +203,26 @@ func (sm *SchemaManager) createIndexes(ctx context.Context, schema string, node 
 
 	// Create indexes for properties marked as indexed
 	for _, prop := range node.Properties {
-		if prop.Indexed {
+		// Check if property should be indexed (can be bool or string)
+		shouldIndex := false
+		if prop.Indexed != nil {
+			switch v := prop.Indexed.(type) {
+			case bool:
+				shouldIndex = v
+			case string:
+				shouldIndex = v != ""
+			}
+		}
+
+		if shouldIndex {
 			idxName := fmt.Sprintf("idx_%s_%s", node.Table, prop.Name)
-			query := fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s(%s)",
-				idxName, tableName, prop.Name)
+			var indexType string
+			if indexTypeStr, ok := prop.Indexed.(string); ok && indexTypeStr != "" {
+				// Use specific index type if provided
+				indexType = fmt.Sprintf(" USING %s", indexTypeStr)
+			}
+			query := fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s%s(%s)",
+				idxName, tableName, indexType, prop.Name)
 			if _, err := sm.db.Exec(ctx, query); err != nil {
 				return err
 			}
