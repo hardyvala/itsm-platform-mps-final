@@ -1,7 +1,5 @@
 package main
 
-import "encoding/json"
-
 // Request/Response types for NATS communication
 
 type RegisterRequest struct {

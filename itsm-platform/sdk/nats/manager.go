@@ -64,7 +64,7 @@ func (em *EventManager) initStream() error {
 	var subjects []string
 	for _, pub := range em.graph.Events.Publish {
 		// Convert {tenant_id} to * for stream subscription
-		subject := strings.ReplaceAll(pub, "{tenant_id}", "*")
+		subject := strings.ReplaceAll(pub.Subject, "{tenant_id}", "*")
 		subjects = append(subjects, subject)
 	}
 
@@ -127,7 +127,7 @@ func (em *EventManager) RegisterHandler(subject string, handler EventHandler) {
 // StartSubscribers starts consuming events from DSL-defined subscriptions
 func (em *EventManager) StartSubscribers(ctx context.Context) error {
 	for _, sub := range em.graph.Events.Subscribe {
-		if err := em.subscribe(ctx, sub); err != nil {
+		if err := em.subscribe(ctx, sub.Subject); err != nil {
 			return err
 		}
 	}

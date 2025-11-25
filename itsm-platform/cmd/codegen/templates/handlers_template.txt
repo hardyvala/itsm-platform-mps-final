@@ -1,0 +1,371 @@
+package handlers
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+
+	"github.com/nats-io/nats.go"
+	dalclient "itsm-platform/services/dal-service/client"
+	basehandlers "itsm-platform/sdk/handlers"
+	"itsm-platform/sdk/validation"
+)
+
+type {{.ServiceNamePascal}}Handlers struct {
+	dal *dalclient.Client
+	nc  *nats.Conn
+	basehandlers.BaseHandlers
+	validation.Validator
+}
+
+func New{{.ServiceNamePascal}}Handlers(dal *dalclient.Client, nc *nats.Conn) *{{.ServiceNamePascal}}Handlers {
+	return &{{.ServiceNamePascal}}Handlers{
+		dal: dal,
+		nc:  nc,
+	}
+}
+
+{{range $node := .Nodes}}
+// {{$node.Name | title}} handlers
+
+func (h *{{$.ServiceNamePascal}}Handlers) Handle{{$node.Name | title}}Create(msg *nats.Msg) {
+	var req basehandlers.CreateRequest
+	if err := json.Unmarshal(msg.Data, &req); err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Pre-create business logic and hooks
+	if err := h.preCreate{{$node.Name | title}}(req.TenantID, req.Data); err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Create via DAL
+	result, err := h.dal.Create(context.Background(), req.TenantID, "{{$node.Name}}", req.Data)
+	if err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Post-create business logic and hooks
+	if err := h.postCreate{{$node.Name | title}}(req.TenantID, result); err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	h.ReplySuccess(msg, result)
+}
+
+func (h *{{$.ServiceNamePascal}}Handlers) Handle{{$node.Name | title}}Update(msg *nats.Msg) {
+	var req basehandlers.UpdateRequest
+	if err := json.Unmarshal(msg.Data, &req); err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Get current entity for pre-update validation
+	current, err := h.dal.Get(context.Background(), req.TenantID, "{{$node.Name}}", req.ID)
+	if err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Pre-update business logic and hooks
+	if err := h.preUpdate{{$node.Name | title}}(req.TenantID, req.ID, current, req.Data); err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Update via DAL
+	result, err := h.dal.Update(context.Background(), req.TenantID, "{{$node.Name}}", req.ID, req.Data)
+	if err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Post-update business logic and hooks
+	if err := h.postUpdate{{$node.Name | title}}(req.TenantID, current, result); err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	h.ReplySuccess(msg, result)
+}
+
+func (h *{{$.ServiceNamePascal}}Handlers) Handle{{$node.Name | title}}Delete(msg *nats.Msg) {
+	var req basehandlers.DeleteRequest
+	if err := json.Unmarshal(msg.Data, &req); err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Get current entity for pre-delete validation
+	current, err := h.dal.Get(context.Background(), req.TenantID, "{{$node.Name}}", req.ID)
+	if err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Pre-delete business logic and hooks
+	if err := h.preDelete{{$node.Name | title}}(req.TenantID, req.ID, current); err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Delete via DAL
+	err = h.dal.Delete(context.Background(), req.TenantID, "{{$node.Name}}", req.ID)
+	if err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Post-delete business logic and hooks
+	if err := h.postDelete{{$node.Name | title}}(req.TenantID, req.ID, current); err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	h.ReplySuccess(msg, map[string]interface{}{"deleted": true})
+}
+
+func (h *{{$.ServiceNamePascal}}Handlers) Handle{{$node.Name | title}}Get(msg *nats.Msg) {
+	var req basehandlers.GetRequest
+	if err := json.Unmarshal(msg.Data, &req); err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Get via DAL
+	result, err := h.dal.Get(context.Background(), req.TenantID, "{{$node.Name}}", req.ID)
+	if err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Load relations if requested
+	{{if $node.Relations}}if req.Include != nil && len(req.Include) > 0 {
+		if enrichedResult, err := h.loadRelations{{$node.Name | title}}(req.TenantID, result, req.Include); err == nil {
+			result = enrichedResult
+		}
+	}{{end}}
+
+	h.ReplySuccess(msg, result)
+}
+
+func (h *{{$.ServiceNamePascal}}Handlers) Handle{{$node.Name | title}}Query(msg *nats.Msg) {
+	var req basehandlers.QueryRequest
+	if err := json.Unmarshal(msg.Data, &req); err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	// Query via DAL
+	result, err := h.dal.Query(context.Background(), req.TenantID, "{{$node.Name}}", req.Query)
+	if err != nil {
+		h.ReplyError(msg, err)
+		return
+	}
+
+	h.ReplySuccess(msg, map[string]interface{}{
+		"data":  result.Data,
+		"total": result.Total,
+	})
+}
+
+// Business logic hooks for {{$node.Name}}
+func (h *{{$.ServiceNamePascal}}Handlers) preCreate{{$node.Name | title}}(tenantID string, data map[string]interface{}) error {
+{{if $node.Hooks.PreCreate.Enabled}}
+	// DSL-defined pre-create validations
+{{range $validation := $node.Hooks.PreCreate.Validations}}	if err := h.ValidateField("{{$validation.Field}}", data, "{{$validation.Rule}}", {{if $validation.Value}}{{$validation.Value}}{{else}}nil{{end}}, "{{$validation.Message}}"); err != nil {
+		return err
+	}
+{{end}}
+	// DSL-defined pre-create actions
+{{range $action := $node.Hooks.PreCreate.Actions}}	if err := h.execute{{$node.Name | title}}Action("{{$action}}", tenantID, data); err != nil {
+		return err
+	}
+{{end}}
+{{end}}
+	// Custom business logic (extend as needed)
+	return nil
+}
+
+func (h *{{$.ServiceNamePascal}}Handlers) postCreate{{$node.Name | title}}(tenantID string, entity map[string]interface{}) error {
+{{if $node.Hooks.PostCreate.Enabled}}
+	// DSL-defined post-create actions
+{{range $action := $node.Hooks.PostCreate.Actions}}	if err := h.execute{{$node.Name | title}}Action("{{$action}}", tenantID, entity); err != nil {
+		log.Printf("Post-create action {{$action}} failed: %v", err)
+	}
+{{end}}
+{{end}}
+	// Custom business logic (extend as needed)
+	return nil
+}
+
+func (h *{{$.ServiceNamePascal}}Handlers) preUpdate{{$node.Name | title}}(tenantID, id string, oldEntity, newData map[string]interface{}) error {
+{{if $node.Hooks.PreUpdate.Enabled}}
+	// DSL-defined pre-update rules
+{{range $rule := $node.Hooks.PreUpdate.Rules}}	if h.EvaluateCondition("{{$rule.Condition}}", oldEntity, newData) {
+		if "{{$rule.Action}}" == "reject" {
+			return fmt.Errorf("{{$rule.Message}}")
+		}
+	}
+{{end}}
+{{end}}
+	// Custom business logic (extend as needed)
+	return nil
+}
+
+func (h *{{$.ServiceNamePascal}}Handlers) postUpdate{{$node.Name | title}}(tenantID string, oldEntity, newEntity map[string]interface{}) error {
+{{if $node.Hooks.PostUpdate.Enabled}}
+	// DSL-defined post-update triggers
+{{range $trigger := $node.Hooks.PostUpdate.Triggers}}	if h.HasFieldChanged("{{$trigger.OnFieldChange}}", oldEntity, newEntity) {
+		if err := h.execute{{$node.Name | title}}Action("{{$trigger.Action}}", tenantID, newEntity); err != nil {
+			log.Printf("Post-update trigger {{$trigger.Action}} failed: %v", err)
+		}
+	}
+{{end}}
+{{end}}
+	// Custom business logic (extend as needed)
+	return nil
+}
+
+func (h *{{$.ServiceNamePascal}}Handlers) preDelete{{$node.Name | title}}(tenantID, id string, entity map[string]interface{}) error {
+{{if $node.Hooks.PreDelete.Enabled}}
+	// DSL-defined pre-delete logic
+	log.Printf("Pre-delete validation for {{$node.Name}} %s", id)
+{{end}}
+	// Custom business logic (extend as needed)
+	return nil
+}
+
+func (h *{{$.ServiceNamePascal}}Handlers) postDelete{{$node.Name | title}}(tenantID, id string, entity map[string]interface{}) error {
+{{if $node.Hooks.PostDelete.Enabled}}
+	// DSL-defined post-delete actions
+{{range $action := $node.Hooks.PostDelete.Actions}}	if err := h.execute{{$node.Name | title}}Action("{{$action}}", tenantID, entity); err != nil {
+		log.Printf("Post-delete action {{$action}} failed: %v", err)
+	}
+{{end}}
+{{end}}
+	// Custom business logic (extend as needed)
+	return nil
+}
+
+{{if $node.Relations}}
+// Load relations for {{$node.Name}}
+func (h *{{$.ServiceNamePascal}}Handlers) loadRelations{{$node.Name | title}}(tenantID string, entity map[string]interface{}, includes []string) (map[string]interface{}, error) {
+	result := make(map[string]interface{})
+	for k, v := range entity {
+		result[k] = v
+	}
+
+	for _, include := range includes {
+		switch include {
+{{range $relation := $node.Relations}}		case "{{$relation.Name}}":
+			if err := h.load{{$node.Name | title}}{{$relation.Name | title}}Relation(tenantID, result); err != nil {
+				log.Printf("Failed to load relation {{$relation.Name}}: %v", err)
+			}
+{{end}}		}
+	}
+	return result, nil
+}
+
+{{range $relation := $node.Relations}}
+func (h *{{$.ServiceNamePascal}}Handlers) load{{$node.Name | title}}{{$relation.Name | title}}Relation(tenantID string, entity map[string]interface{}) error {
+	// Relation: {{$relation.Type}} {{$relation.TargetService}}.{{$relation.TargetNode}}
+{{if eq $relation.Type "belongs_to"}}	if localValue, exists := entity["{{$relation.LocalField}}"]; exists {
+		// TODO: Cross-service call to {{$relation.TargetService}}.{{$relation.TargetNode}}.get
+		// For now, just add a placeholder
+		entity["{{$relation.Name}}"] = map[string]interface{}{
+			"service": "{{$relation.TargetService}}",
+			"node": "{{$relation.TargetNode}}", 
+			"id": localValue,
+		}
+	}
+{{else if eq $relation.Type "has_many"}}	if localValue, exists := entity["{{$relation.LocalField}}"]; exists {
+		// TODO: Cross-service call to {{$relation.TargetService}}.{{$relation.TargetNode}}.query
+		// For now, just add a placeholder
+		entity["{{$relation.Name}}"] = []map[string]interface{}{
+			{
+				"service": "{{$relation.TargetService}}",
+				"node": "{{$relation.TargetNode}}", 
+				"{{$relation.TargetField}}": localValue,
+			},
+		}
+	}
+{{end}}	return nil
+}
+{{end}}
+{{end}}
+
+// Helper methods for actions
+func (h *{{$.ServiceNamePascal}}Handlers) execute{{$node.Name | title}}Action(action string, tenantID string, data map[string]interface{}) error {
+	log.Printf("Executing {{$node.Name}} action: %s", action)
+	
+	switch action {
+{{range $action := $node.Hooks.PreCreate.Actions}}	case "{{$action}}":
+		// TODO: Implement {{$action}} action logic
+		return h.action{{$action | title}}(tenantID, data)
+{{end}}
+{{range $action := $node.Hooks.PostCreate.Actions}}	case "{{$action}}":
+		// TODO: Implement {{$action}} action logic
+		return h.action{{$action | title}}(tenantID, data)
+{{end}}
+{{range $trigger := $node.Hooks.PostUpdate.Triggers}}	case "{{$trigger.Action}}":
+		// TODO: Implement {{$trigger.Action}} trigger logic
+		return h.action{{$trigger.Action | title}}(tenantID, data)
+{{end}}
+{{range $action := $node.Hooks.PostDelete.Actions}}	case "{{$action}}":
+		// TODO: Implement {{$action}} action logic
+		return h.action{{$action | title}}(tenantID, data)
+{{end}}	default:
+		log.Printf("Unknown action: %s", action)
+	}
+	return nil
+}
+
+// Helper methods will be added at the end to avoid duplication
+
+// Action implementations (extend these as needed)
+{{range $action := $node.Hooks.PreCreate.Actions}}
+func (h *{{$.ServiceNamePascal}}Handlers) action{{$action | title}}(tenantID string, data map[string]interface{}) error {
+	// TODO: Implement {{$action}} action
+	log.Printf("Action {{$action}} called for tenant %s", tenantID)
+	return nil
+}
+{{end}}
+{{range $action := $node.Hooks.PostCreate.Actions}}
+func (h *{{$.ServiceNamePascal}}Handlers) action{{$action | title}}(tenantID string, data map[string]interface{}) error {
+	// TODO: Implement {{$action}} action
+	log.Printf("Action {{$action}} called for tenant %s", tenantID)
+	return nil
+}
+{{end}}
+{{range $trigger := $node.Hooks.PostUpdate.Triggers}}
+func (h *{{$.ServiceNamePascal}}Handlers) action{{$trigger.Action | title}}(tenantID string, data map[string]interface{}) error {
+	// TODO: Implement {{$trigger.Action}} trigger
+	log.Printf("Action {{$trigger.Action}} called for tenant %s", tenantID)
+	return nil
+}
+{{end}}
+{{range $action := $node.Hooks.PostDelete.Actions}}
+func (h *{{$.ServiceNamePascal}}Handlers) action{{$action | title}}(tenantID string, data map[string]interface{}) error {
+	// TODO: Implement {{$action}} action
+	log.Printf("Action {{$action}} called for tenant %s", tenantID)
+	return nil
+}
+{{end}}
+{{end}}
+
+// Event subscription handlers (add as needed based on DSL events.subscribe)
+func (h *{{.ServiceNamePascal}}Handlers) OnCustomerUpdated(msg *nats.Msg) {
+	log.Printf("Customer updated event received: %s", string(msg.Data))
+	// TODO: Implement customer update handling logic
+}
+
+func (h *{{.ServiceNamePascal}}Handlers) OnCustomerDeleted(msg *nats.Msg) {
+	log.Printf("Customer deleted event received: %s", string(msg.Data))
+	// TODO: Implement customer deletion handling logic
+}

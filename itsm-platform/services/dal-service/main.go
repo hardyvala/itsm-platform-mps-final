@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -345,25 +346,11 @@ func (s *DALService) replyError(msg *nats.Msg, err error) {
 func parseDSubject(subject string) map[string]string {
 	// dal.{service}.{entity}.{action}
 	parts := make(map[string]string)
-	tokens := splitSubject(subject)
+	tokens := strings.Split(subject, ".")
 	if len(tokens) >= 4 {
 		parts["service"] = tokens[1]
 		parts["entity"] = tokens[2]
 		parts["action"] = tokens[3]
-	}
-	return parts
-}
-
-func splitSubject(subject string) []string {
-	var parts []string
-	for _, p := range subject {
-		if p == '.' {
-			parts = append(parts, "")
-		} else if len(parts) == 0 {
-			parts = append(parts, string(p))
-		} else {
-			parts[len(parts)-1] += string(p)
-		}
 	}
 	return parts
 }

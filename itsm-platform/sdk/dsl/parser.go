@@ -21,29 +21,34 @@ type Metadata struct {
 	Service  string `json:"service"`
 	Database string `json:"database"`
 	Port     int    `json:"port"`
+	Package  string `json:"package,omitempty"`
+	Version  string `json:"version,omitempty"`
 }
 
 // Node represents an entity (graph node = DB table)
 type Node struct {
-	Name       string     `json:"name"`
-	Table      string     `json:"table"`
-	Properties []Property `json:"properties"`
-	Indexes    []Index    `json:"indexes"`
-	DAL        DALConfig  `json:"dal"`
+	Name       string      `json:"name"`
+	Table      string      `json:"table"`
+	Properties []Property  `json:"properties"`
+	Indexes    []Index     `json:"indexes"`
+	DAL        DALConfig   `json:"dal"`
+	Relations  []Relation  `json:"relations,omitempty"`
+	Hooks      HookConfig  `json:"hooks,omitempty"`
+	Graph      GraphConfig `json:"graph,omitempty"`
 }
 
 type Property struct {
-	Name            string   `json:"name"`
-	Type            string   `json:"type"`
-	Primary         bool     `json:"primary,omitempty"`
-	Required        bool     `json:"required,omitempty"`
-	Indexed         bool     `json:"indexed,omitempty"`
-	UniquePerTenant bool     `json:"unique_per_tenant,omitempty"`
-	MaxLength       int      `json:"max_length,omitempty"`
-	Default         string   `json:"default,omitempty"`
-	Values          []string `json:"values,omitempty"` // For enum type
-	Precision       int      `json:"precision,omitempty"`
-	Scale           int      `json:"scale,omitempty"`
+	Name            string      `json:"name"`
+	Type            string      `json:"type"`
+	Primary         bool        `json:"primary,omitempty"`
+	Required        bool        `json:"required,omitempty"`
+	Indexed         bool        `json:"indexed,omitempty"`
+	UniquePerTenant bool        `json:"unique_per_tenant,omitempty"`
+	MaxLength       int         `json:"max_length,omitempty"`
+	Default         interface{} `json:"default,omitempty"`
+	Values          []string    `json:"values,omitempty"` // For enum type
+	Precision       int         `json:"precision,omitempty"`
+	Scale           int         `json:"scale,omitempty"`
 }
 
 type Index struct {
@@ -78,9 +83,78 @@ type External struct {
 }
 
 type Events struct {
-	Stream    string   `json:"stream"`
-	Publish   []string `json:"publish"`
-	Subscribe []string `json:"subscribe"`
+	Stream    string           `json:"stream"`
+	Publish   []PublishEvent   `json:"publish"`
+	Subscribe []SubscribeEvent `json:"subscribe"`
+}
+
+type PublishEvent struct {
+	Event   string `json:"event"`
+	Subject string `json:"subject"`
+}
+
+type SubscribeEvent struct {
+	Subject string `json:"subject"`
+	Handler string `json:"handler"`
+}
+
+// Relation represents a relationship between entities
+type Relation struct {
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	TargetService string `json:"target_service"`
+	TargetNode    string `json:"target_node"`
+	LocalField    string `json:"local_field"`
+	TargetField   string `json:"target_field"`
+}
+
+// HookConfig represents business logic hooks
+type HookConfig struct {
+	PreCreate  HookDefinition `json:"pre_create,omitempty"`
+	PostCreate HookDefinition `json:"post_create,omitempty"`
+	PreUpdate  HookDefinition `json:"pre_update,omitempty"`
+	PostUpdate HookDefinition `json:"post_update,omitempty"`
+	PreDelete  HookDefinition `json:"pre_delete,omitempty"`
+	PostDelete HookDefinition `json:"post_delete,omitempty"`
+}
+
+type HookDefinition struct {
+	Enabled     bool             `json:"enabled"`
+	Validations []ValidationRule `json:"validations,omitempty"`
+	Actions     []string         `json:"actions,omitempty"`
+	Rules       []BusinessRule   `json:"rules,omitempty"`
+	Triggers    []Trigger        `json:"triggers,omitempty"`
+}
+
+type ValidationRule struct {
+	Field   string      `json:"field"`
+	Rule    string      `json:"rule"`
+	Value   interface{} `json:"value,omitempty"`
+	Message string      `json:"message"`
+}
+
+type BusinessRule struct {
+	Condition string `json:"condition"`
+	Action    string `json:"action"`
+	Message   string `json:"message"`
+}
+
+type Trigger struct {
+	OnFieldChange string `json:"on_field_change"`
+	Action        string `json:"action"`
+}
+
+// GraphConfig represents graph/visualization configuration
+type GraphConfig struct {
+	Label          string      `json:"label"`
+	SyncProperties []string    `json:"sync_properties"`
+	Edges          []GraphEdge `json:"edges"`
+}
+
+type GraphEdge struct {
+	Type string `json:"type"`
+	To   string `json:"to"`
+	Via  string `json:"via"`
 }
 
 // Parser loads DSL from file
