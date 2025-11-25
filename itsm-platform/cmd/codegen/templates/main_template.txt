@@ -1,0 +1,128 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
+{{range $node := .Nodes}}{{range $event := $.Events.Subscribe}}	"github.com/nats-io/nats.go"
+{{break}}{{end}}{{break}}{{end}}	dalclient "itsm-platform/services/dal-service/client"
+	"itsm-platform/sdk/dsl"
+	natssdk "itsm-platform/sdk/nats"
+	"{{.ServiceName}}-service/handlers"
+)
+
+type {{.ServiceNamePascal}}Service struct {
+	natsManager *natssdk.ServiceManager
+	dal         *dalclient.Client
+	handlers    *handlers.{{.ServiceNamePascal}}Handlers
+	graph       *dsl.ServiceGraph
+}
+
+func main() {
+	// Load DSL configuration
+	dslPath := getEnv("DSL_PATH", "./dsl/service.json")
+	graph, err := loadDSL(dslPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Create NATS service manager
+	natsURL := getEnv("NATS_URL", "nats://localhost:4222")
+	natsManager, err := natssdk.NewServiceManager(natsURL, graph)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer natsManager.Close()
+
+	// Create DAL client
+	dalClient := dalclient.NewClient(natsManager.GetConnection(), "{{.ServiceName}}")
+
+	// Register service DSL with DAL
+	if err := registerWithDAL(dalClient, graph); err != nil {
+		log.Fatal(err)
+	}
+
+	// Create service
+	service := &{{.ServiceNamePascal}}Service{
+		natsManager: natsManager,
+		dal:         dalClient,
+		handlers:    handlers.New{{.ServiceNamePascal}}Handlers(dalClient, natsManager.GetConnection()),
+		graph:       graph,
+	}
+
+	// Setup NATS subscriptions
+	if err := service.setupSubscriptions(); err != nil {
+		log.Fatal(err)
+	}
+
+	// Start the service
+	ctx := context.Background()
+	if err := natsManager.StartService(ctx); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("{{.ServiceNamePascal}} service started")
+
+	// Wait for shutdown signal
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+
+	log.Println("Shutting down {{.ServiceName}} service...")
+}
+
+func (s *{{.ServiceNamePascal}}Service) setupSubscriptions() error {
+{{range $node := .Nodes}}	// Register {{$node.Name}} handlers
+	if err := s.natsManager.RegisterEntityHandlers("{{$node.Name}}", 
+		s.handlers.Handle{{$node.Name}}Create,
+		s.handlers.Handle{{$node.Name}}Update,
+		s.handlers.Handle{{$node.Name}}Delete,
+		s.handlers.Handle{{$node.Name}}Get,
+		s.handlers.Handle{{$node.Name}}Query); err != nil {
+		return err
+	}
+{{end}}
+{{if .Events.Subscribe}}
+	// Register event handlers for cross-service events
+	eventHandlers := map[string]func(*nats.Msg){
+{{range $event := .Events.Subscribe}}		"{{$event.Subject}}": s.handlers.OnCustomerDeleted,
+{{end}}	}
+	return s.natsManager.RegisterEventHandlers(eventHandlers)
+{{else}}
+	return nil
+{{end}}}
+
+func loadDSL(dslPath string) (*dsl.ServiceGraph, error) {
+	data, err := os.ReadFile(dslPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read DSL file: %w", err)
+	}
+
+	var graph dsl.ServiceGraph
+	if err := json.Unmarshal(data, &graph); err != nil {
+		return nil, fmt.Errorf("failed to parse DSL: %w", err)
+	}
+
+	return &graph, nil
+}
+
+func registerWithDAL(dalClient *dalclient.Client, graph *dsl.ServiceGraph) error {
+	// Convert graph to map for DAL registration
+	dslMap := make(map[string]interface{})
+	data, _ := json.Marshal(graph)
+	json.Unmarshal(data, &dslMap)
+	
+	return dalClient.RegisterService("{{.ServiceName}}", dslMap)
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}

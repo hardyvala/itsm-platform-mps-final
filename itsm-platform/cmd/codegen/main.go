@@ -22,7 +22,7 @@ func main() {
 		return
 	}
 
-	generator := &ServiceGenerator{}
+	generator := NewServiceGenerator()
 	if err := generator.GenerateService(*dslPath, *outputDir); err != nil {
 		log.Fatal(err)
 	}

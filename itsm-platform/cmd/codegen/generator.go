@@ -89,7 +89,7 @@ func (g *ServiceGenerator) createDirectories(serviceDir string) error {
 
 func (g *ServiceGenerator) generateMainFile(serviceDir string, graph *dsl.ServiceGraph) error {
 	// Read template from file
-	mainTemplate, err := os.ReadFile("/tmp/main_template.txt")
+	mainTemplate, err := os.ReadFile("/home/hardik/Downloads/itsm-platform-mps-final/itsm-platform/cmd/codegen/templates/main_template.txt")
 	if err != nil {
 		return fmt.Errorf("failed to read main template: %w", err)
 	}

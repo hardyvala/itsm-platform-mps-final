@@ -91,29 +91,48 @@ func (s *DALService) Start() error {
 }
 
 func (s *DALService) handleRegister(msg *nats.Msg) {
-	var req RegisterRequest
+	var req map[string]interface{}
 	if err := json.Unmarshal(msg.Data, &req); err != nil {
 		s.replyError(msg, err)
 		return
 	}
 
+	service, ok := req["service"].(string)
+	if !ok {
+		s.replyError(msg, fmt.Errorf("invalid service name"))
+		return
+	}
+
+	dsl, ok := req["dsl"]
+	if !ok {
+		s.replyError(msg, fmt.Errorf("missing DSL"))
+		return
+	}
+
 	// Parse and register service DSL
-	if err := s.registry.RegisterService(req.Service, req.DSL); err != nil {
+	if err := s.registry.RegisterService(service, dsl); err != nil {
 		s.replyError(msg, err)
 		return
 	}
 
-	// Generate schemas for existing tenants
-	tenants, _ := s.schemas.ListTenants(context.Background())
-	for _, tenant := range tenants {
-		if err := s.schemas.CreateServiceSchema(context.Background(), tenant, req.Service, req.DSL); err != nil {
-			log.Printf("Failed to create schema for tenant %s: %v", tenant, err)
+	// Convert to DSLDefinition for schema creation
+	var dslDef DSLDefinition
+	dslBytes, _ := json.Marshal(dsl)
+	if err := json.Unmarshal(dslBytes, &dslDef); err != nil {
+		log.Printf("Failed to convert DSL for schema creation: %v", err)
+	} else {
+		// Generate schemas for existing tenants
+		tenants, _ := s.schemas.ListTenants(context.Background())
+		for _, tenant := range tenants {
+			if err := s.schemas.CreateServiceSchema(context.Background(), tenant, service, dslDef); err != nil {
+				log.Printf("Failed to create schema for tenant %s: %v", tenant, err)
+			}
 		}
 	}
 
 	s.replySuccess(msg, map[string]interface{}{
 		"status":  "registered",
-		"service": req.Service,
+		"service": service,
 	})
 }
 

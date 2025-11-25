@@ -25,9 +25,27 @@ func NewServiceRegistry() *ServiceRegistry {
 }
 
 // RegisterService registers a new service DSL
-func (sr *ServiceRegistry) RegisterService(name string, dsl DSLDefinition) error {
+func (sr *ServiceRegistry) RegisterService(name string, dslInterface interface{}) error {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
+
+	// Convert interface to DSLDefinition
+	var dsl DSLDefinition
+	switch v := dslInterface.(type) {
+	case DSLDefinition:
+		dsl = v
+	case map[string]interface{}:
+		// Convert map to DSL struct
+		data, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("failed to marshal DSL: %w", err)
+		}
+		if err := json.Unmarshal(data, &dsl); err != nil {
+			return fmt.Errorf("failed to unmarshal DSL: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported DSL type: %T", dslInterface)
+	}
 
 	// Create service definition
 	serviceDef := &ServiceDefinition{

@@ -2,10 +2,7 @@ package main
 
 // Request/Response types for NATS communication
 
-type RegisterRequest struct {
-	Service string        `json:"service"`
-	DSL     DSLDefinition `json:"dsl"`
-}
+// RegisterRequest is now handled dynamically as map[string]interface{}
 
 type QueryRequest struct {
 	TenantID string `json:"tenant_id"`
