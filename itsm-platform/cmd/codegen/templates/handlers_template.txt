@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/nats-io/nats.go"
-	dalclient "itsm-platform/services/dal-service/client"
 	basehandlers "itsm-platform/sdk/handlers"
 	"itsm-platform/sdk/validation"
+	dalclient "itsm-platform/services/dal-service/client"
+
+	"github.com/nats-io/nats.go"
 )
 
 type {{.ServiceNamePascal}}Handlers struct {

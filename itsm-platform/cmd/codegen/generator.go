@@ -249,13 +249,13 @@ func (g *ServiceGenerator) copyDSLFile(sourceDSL, serviceDir string) error {
 	}
 
 	dslFile := filepath.Join(serviceDir, "dsl", "service.json")
-	err = os.WriteFile(dslFile, data, 0644)
+	err = os.WriteFile(dslFile, data, 0777)
 	if err != nil {
 		return err
 	}
 
 	// Ensure proper permissions
-	return os.Chmod(dslFile, 0664)
+	return os.Chmod(dslFile, 0777)
 }
 
 func (g *ServiceGenerator) generateGoMod(serviceDir string, graph *dsl.ServiceGraph) error {
@@ -408,5 +408,5 @@ func (g *ServiceGenerator) executeTemplate(tmplText string, data interface{}, ou
 	}
 
 	// Set proper file permissions (read/write for owner, read for group/others)
-	return os.Chmod(outputPath, 0664)
+	return os.Chmod(outputPath, 0777)
 }

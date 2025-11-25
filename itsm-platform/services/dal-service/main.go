@@ -30,7 +30,7 @@ type DALService struct {
 
 func main() {
 	config := Config{
-		DatabaseURL: getEnv("DATABASE_URL", "postgres://user:pass@localhost/itsm"),
+		DatabaseURL: getEnv("DATABASE_URL", "postgres://itsm_user:itsm_pass@localhost/itsm_db"),
 		NatsURL:     getEnv("NATS_URL", "nats://localhost:4222"),
 		ServiceName: "dal-service",
 	}
