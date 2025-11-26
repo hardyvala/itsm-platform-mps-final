@@ -1,36 +1,111 @@
 {
-  "version": "2.0",
-  "kind": "ServiceGraph",
   "metadata": {
     "service": "ticket",
-    "database": "ticket_db",
-    "port": 8001,
-    "package": "github.com/itsm/ticket-service"
+    "version": "1.0"
   },
-
   "nodes": [
     {
       "name": "Ticket",
       "table": "tickets",
       "properties": [
-        {"name": "id", "type": "uuid", "primary": true},
-        {"name": "tenant_id", "type": "uuid", "required": true, "indexed": true},
-        {"name": "subject", "type": "text", "required": true, "max_length": 255},
-        {"name": "description", "type": "text"},
-        {"name": "status", "type": "enum", "values": ["open", "in_progress", "pending", "resolved", "closed"], "default": "open", "indexed": true},
-        {"name": "priority", "type": "enum", "values": ["low", "medium", "high", "critical"], "default": "medium", "indexed": true},
-        {"name": "customer_id", "type": "uuid", "required": true, "indexed": true},
-        {"name": "assigned_to", "type": "uuid", "indexed": true},
-        {"name": "due_date", "type": "timestamp"},
-        {"name": "resolved_at", "type": "timestamp"},
-        {"name": "created_at", "type": "timestamp", "required": true, "default": "now()"},
-        {"name": "updated_at", "type": "timestamp", "required": true, "default": "now()"},
-        {"name": "deleted_at", "type": "timestamp"}
+        {
+          "name": "id",
+          "type": "uuid",
+          "primary": true
+        },
+        {
+          "name": "subject",
+          "type": "text",
+          "required": true,
+          "max_length": 255
+        },
+        {
+          "name": "description",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "values": [
+            "open",
+            "in_progress",
+            "pending",
+            "resolved",
+            "closed"
+          ],
+          "default": "open",
+          "indexed": true
+        },
+        {
+          "name": "priority",
+          "type": "enum",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "default": "medium",
+          "indexed": true
+        },
+        {
+          "name": "customer_id",
+          "type": "uuid",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "assigned_to",
+          "type": "uuid",
+          "indexed": true
+        },
+        {
+          "name": "due_date",
+          "type": "timestamp"
+        },
+        {
+          "name": "resolved_at",
+          "type": "timestamp"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "required": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "required": true,
+          "default": "now()"
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp"
+        }
       ],
       "indexes": [
-        {"name": "idx_tickets_tenant_status", "fields": ["tenant_id", "status"]},
-        {"name": "idx_tickets_tenant_priority", "fields": ["tenant_id", "priority"]},
-        {"name": "idx_tickets_tenant_customer", "fields": ["tenant_id", "customer_id"]}
+        {
+          "name": "idx_tickets_tenant_status",
+          "fields": [
+            "tenant_id",
+            "status"
+          ]
+        },
+        {
+          "name": "idx_tickets_tenant_priority",
+          "fields": [
+            "tenant_id",
+            "priority"
+          ]
+        },
+        {
+          "name": "idx_tickets_tenant_customer",
+          "fields": [
+            "tenant_id",
+            "customer_id"
+          ]
+        }
       ],
       "dal": {
         "soft_delete": true,
@@ -58,25 +133,48 @@
         "pre_create": {
           "enabled": true,
           "validations": [
-            {"field": "subject", "rule": "min_length", "value": 5, "message": "Subject must be at least 5 characters"},
-            {"field": "customer_id", "rule": "required", "message": "Customer is required"}
+            {
+              "field": "subject",
+              "rule": "min_length",
+              "value": 5,
+              "message": "Subject must be at least 5 characters"
+            },
+            {
+              "field": "customer_id",
+              "rule": "required",
+              "message": "Customer is required"
+            }
           ]
         },
         "post_create": {
           "enabled": true,
-          "actions": ["notify_customer", "auto_assign", "calculate_sla"]
+          "actions": [
+            "notifyCustomer",
+            "autoAssignTicket",
+            "calculateSLA"
+          ]
         },
         "pre_update": {
           "enabled": true,
           "rules": [
-            {"condition": "old.status == 'closed' && new.status != 'closed'", "action": "reject", "message": "Cannot reopen closed ticket"}
+            {
+              "condition": "old.status == 'closed' && new.status != 'closed'",
+              "action": "reject",
+              "message": "Cannot reopen closed ticket"
+            }
           ]
         },
         "post_update": {
           "enabled": true,
           "triggers": [
-            {"on_field_change": "status", "action": "notify_status_change"},
-            {"on_field_change": "assigned_to", "action": "notify_assignment"}
+            {
+              "on_field_change": "status",
+              "action": "notifyStatusChange"
+            },
+            {
+              "on_field_change": "assigned_to",
+              "action": "notifyAssignment"
+            }
           ]
         },
         "pre_delete": {
@@ -84,15 +182,31 @@
         },
         "post_delete": {
           "enabled": true,
-          "actions": ["cleanup_attachments"]
+          "actions": [
+            "cleanup"
+          ]
         }
       },
       "graph": {
         "label": "Ticket",
-        "sync_properties": ["id", "tenant_id", "subject", "status", "priority"],
+        "sync_properties": [
+          "id",
+          "tenant_id",
+          "subject",
+          "status",
+          "priority"
+        ],
         "edges": [
-          {"type": "REPORTED_BY", "to": "Customer", "via": "customer_id"},
-          {"type": "ASSIGNED_TO", "to": "Agent", "via": "assigned_to"}
+          {
+            "type": "REPORTED_BY",
+            "to": "Customer",
+            "via": "customer_id"
+          },
+          {
+            "type": "ASSIGNED_TO",
+            "to": "Agent",
+            "via": "assigned_to"
+          }
         ]
       }
     },
@@ -100,19 +214,68 @@
       "name": "Comment",
       "table": "comments",
       "properties": [
-        {"name": "id", "type": "uuid", "primary": true},
-        {"name": "tenant_id", "type": "uuid", "required": true, "indexed": true},
-        {"name": "ticket_id", "type": "uuid", "required": true, "indexed": true},
-        {"name": "body", "type": "text", "required": true},
-        {"name": "author_id", "type": "uuid", "required": true, "indexed": true},
-        {"name": "author_type", "type": "enum", "values": ["agent", "customer", "system"], "required": true},
-        {"name": "is_internal", "type": "boolean", "default": false},
-        {"name": "created_at", "type": "timestamp", "required": true, "default": "now()"},
-        {"name": "updated_at", "type": "timestamp", "required": true, "default": "now()"},
-        {"name": "deleted_at", "type": "timestamp"}
+        {
+          "name": "id",
+          "type": "uuid",
+          "primary": true
+        },
+        {
+          "name": "ticket_id",
+          "type": "uuid",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "author_id",
+          "type": "uuid",
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "author_type",
+          "type": "enum",
+          "values": [
+            "agent",
+            "customer",
+            "system"
+          ],
+          "required": true
+        },
+        {
+          "name": "is_internal",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "required": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "required": true,
+          "default": "now()"
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp"
+        }
       ],
       "indexes": [
-        {"name": "idx_comments_tenant_ticket", "fields": ["tenant_id", "ticket_id"]}
+        {
+          "name": "idx_comments_tenant_ticket",
+          "fields": [
+            "tenant_id",
+            "ticket_id"
+          ]
+        }
       ],
       "dal": {
         "soft_delete": true,
@@ -132,41 +295,88 @@
         "pre_create": {
           "enabled": true,
           "validations": [
-            {"field": "body", "rule": "min_length", "value": 1, "message": "Comment body is required"}
+            {
+              "field": "body",
+              "rule": "min_length",
+              "value": 1,
+              "message": "Comment body is required"
+            }
           ]
         },
         "post_create": {
           "enabled": true,
-          "actions": ["update_ticket_timestamp", "notify_watchers"]
+          "actions": [
+            "updateTicketTimestamp",
+            "notifyWatchers"
+          ]
         },
-        "pre_update": {"enabled": false},
-        "post_update": {"enabled": false},
-        "pre_delete": {"enabled": false},
-        "post_delete": {"enabled": false}
+        "pre_update": {
+          "enabled": false
+        },
+        "post_update": {
+          "enabled": false
+        },
+        "pre_delete": {
+          "enabled": false
+        },
+        "post_delete": {
+          "enabled": false
+        }
       },
       "graph": {
         "label": "Comment",
-        "sync_properties": ["id", "tenant_id", "created_at"],
+        "sync_properties": [
+          "id",
+          "tenant_id",
+          "created_at"
+        ],
         "edges": [
-          {"type": "BELONGS_TO", "to": "Ticket", "via": "ticket_id"}
+          {
+            "type": "BELONGS_TO",
+            "to": "Ticket",
+            "via": "ticket_id"
+          }
         ]
       }
     }
   ],
-
   "events": {
     "stream": "TICKET_EVENTS",
     "publish": [
-      {"event": "ticket.created", "subject": "ticket.{tenant_id}.ticket.created"},
-      {"event": "ticket.updated", "subject": "ticket.{tenant_id}.ticket.updated"},
-      {"event": "ticket.deleted", "subject": "ticket.{tenant_id}.ticket.deleted"},
-      {"event": "ticket.status_changed", "subject": "ticket.{tenant_id}.ticket.status_changed"},
-      {"event": "comment.created", "subject": "ticket.{tenant_id}.comment.created"},
-      {"event": "comment.updated", "subject": "ticket.{tenant_id}.comment.updated"}
+      {
+        "event": "ticket.created",
+        "subject": "ticket.{tenant_id}.ticket.created"
+      },
+      {
+        "event": "ticket.updated",
+        "subject": "ticket.{tenant_id}.ticket.updated"
+      },
+      {
+        "event": "ticket.deleted",
+        "subject": "ticket.{tenant_id}.ticket.deleted"
+      },
+      {
+        "event": "ticket.status_changed",
+        "subject": "ticket.{tenant_id}.ticket.status_changed"
+      },
+      {
+        "event": "comment.created",
+        "subject": "ticket.{tenant_id}.comment.created"
+      },
+      {
+        "event": "comment.updated",
+        "subject": "ticket.{tenant_id}.comment.updated"
+      }
     ],
     "subscribe": [
-      {"subject": "customer.*.customer.updated", "handler": "on_customer_updated"},
-      {"subject": "customer.*.customer.deleted", "handler": "on_customer_deleted"}
+      {
+        "subject": "customer.*.customer.updated",
+        "handler": "on_customer_updated"
+      },
+      {
+        "subject": "customer.*.customer.deleted",
+        "handler": "on_customer_deleted"
+      }
     ]
   }
 }

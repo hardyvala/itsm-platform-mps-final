@@ -1,38 +1,125 @@
 {
-  "version": "2.0",
-  "kind": "ServiceGraph",
   "metadata": {
     "service": "asset",
-    "database": "asset_db",
-    "port": 8003,
-    "package": "github.com/itsm/asset-service"
+    "version": "1.0"
   },
-
   "nodes": [
     {
       "name": "Asset",
       "table": "assets",
       "properties": [
-        {"name": "id", "type": "uuid", "primary": true},
-        {"name": "tenant_id", "type": "uuid", "required": true, "indexed": true},
-        {"name": "asset_tag", "type": "text", "required": true, "max_length": 50, "unique_per_tenant": true},
-        {"name": "name", "type": "text", "required": true, "max_length": 255},
-        {"name": "asset_type", "type": "enum", "values": ["hardware", "software", "license", "service"], "required": true, "indexed": true},
-        {"name": "status", "type": "enum", "values": ["active", "in_maintenance", "retired", "disposed"], "default": "active", "indexed": true},
-        {"name": "serial_number", "type": "text", "max_length": 100},
-        {"name": "assigned_to", "type": "uuid", "indexed": true},
-        {"name": "purchase_date", "type": "timestamp"},
-        {"name": "warranty_expiry", "type": "timestamp"},
-        {"name": "cost", "type": "decimal", "precision": 10, "scale": 2},
-        {"name": "created_at", "type": "timestamp", "required": true, "default": "now()"},
-        {"name": "updated_at", "type": "timestamp", "required": true, "default": "now()"},
-        {"name": "deleted_at", "type": "timestamp"}
+        {
+          "name": "id",
+          "type": "uuid",
+          "primary": true
+        },
+        {
+          "name": "asset_tag",
+          "type": "text",
+          "required": true,
+          "max_length": 50
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "max_length": 255
+        },
+        {
+          "name": "asset_type",
+          "type": "enum",
+          "values": [
+            "hardware",
+            "software",
+            "license",
+            "service"
+          ],
+          "required": true,
+          "indexed": true
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "values": [
+            "active",
+            "in_maintenance",
+            "retired",
+            "disposed"
+          ],
+          "default": "active",
+          "indexed": true
+        },
+        {
+          "name": "serial_number",
+          "type": "text",
+          "max_length": 100
+        },
+        {
+          "name": "assigned_to",
+          "type": "uuid",
+          "indexed": true
+        },
+        {
+          "name": "purchase_date",
+          "type": "timestamp"
+        },
+        {
+          "name": "warranty_expiry",
+          "type": "timestamp"
+        },
+        {
+          "name": "cost",
+          "type": "decimal",
+          "precision": 10,
+          "scale": 2
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "required": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "required": true,
+          "default": "now()"
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp"
+        }
       ],
       "indexes": [
-        {"name": "idx_assets_tenant_tag", "fields": ["tenant_id", "asset_tag"], "unique": true},
-        {"name": "idx_assets_tenant_type", "fields": ["tenant_id", "asset_type"]},
-        {"name": "idx_assets_tenant_status", "fields": ["tenant_id", "status"]},
-        {"name": "idx_assets_tenant_assigned", "fields": ["tenant_id", "assigned_to"]}
+        {
+          "name": "idx_assets_tenant_tag",
+          "fields": [
+            "tenant_id",
+            "asset_tag"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_assets_tenant_type",
+          "fields": [
+            "tenant_id",
+            "asset_type"
+          ]
+        },
+        {
+          "name": "idx_assets_tenant_status",
+          "fields": [
+            "tenant_id",
+            "status"
+          ]
+        },
+        {
+          "name": "idx_assets_tenant_assigned",
+          "fields": [
+            "tenant_id",
+            "assigned_to"
+          ]
+        }
       ],
       "dal": {
         "soft_delete": true,
@@ -52,55 +139,102 @@
         "pre_create": {
           "enabled": true,
           "validations": [
-            {"field": "asset_tag", "rule": "min_length", "value": 3, "message": "Asset tag must be at least 3 characters"},
-            {"field": "name", "rule": "required", "message": "Asset name is required"}
+            {
+              "field": "asset_tag",
+              "rule": "min_length",
+              "value": 3,
+              "message": "Asset tag must be at least 3 characters"
+            },
+            {
+              "field": "name",
+              "rule": "required",
+              "message": "Asset name is required"
+            }
           ]
         },
         "post_create": {
           "enabled": true,
-          "actions": ["log_asset_creation"]
+          "actions": [
+            "logAssetCreation"
+          ]
         },
         "pre_update": {
           "enabled": true,
           "rules": [
-            {"condition": "old.status == 'disposed'", "action": "reject", "message": "Cannot modify disposed asset"}
+            {
+              "condition": "old.status == 'disposed'",
+              "action": "reject",
+              "message": "Cannot modify disposed asset"
+            }
           ]
         },
         "post_update": {
           "enabled": true,
           "triggers": [
-            {"on_field_change": "status", "action": "log_status_change"},
-            {"on_field_change": "assigned_to", "action": "notify_assignment_change"}
+            {
+              "on_field_change": "status",
+              "action": "logStatusChange"
+            },
+            {
+              "on_field_change": "assigned_to",
+              "action": "notifyAssigneeChange"
+            }
           ]
         },
         "pre_delete": {
           "enabled": true,
-          "checks": ["not_assigned"]
+          "checks": [
+            "not_assigned"
+          ]
         },
         "post_delete": {
           "enabled": true,
-          "actions": ["archive_asset_history"]
+          "actions": [
+            "archiveAssetHistory"
+          ]
         }
       },
       "graph": {
         "label": "Asset",
-        "sync_properties": ["id", "tenant_id", "name", "asset_tag", "status", "asset_type"],
+        "sync_properties": [
+          "id",
+          "tenant_id",
+          "name",
+          "asset_tag",
+          "status",
+          "asset_type"
+        ],
         "edges": [
-          {"type": "ASSIGNED_TO", "to": "Customer", "via": "assigned_to"}
+          {
+            "type": "ASSIGNED_TO",
+            "to": "Customer",
+            "via": "assigned_to"
+          }
         ]
       }
     }
   ],
-
   "events": {
     "stream": "ASSET_EVENTS",
     "publish": [
-      {"event": "asset.created", "subject": "asset.{tenant_id}.asset.created"},
-      {"event": "asset.updated", "subject": "asset.{tenant_id}.asset.updated"},
-      {"event": "asset.deleted", "subject": "asset.{tenant_id}.asset.deleted"}
+      {
+        "event": "asset.created",
+        "subject": "asset.{tenant_id}.asset.created"
+      },
+      {
+        "event": "asset.updated",
+        "subject": "asset.{tenant_id}.asset.updated"
+      },
+      {
+        "event": "asset.deleted",
+        "subject": "asset.{tenant_id}.asset.deleted"
+      }
     ],
     "subscribe": [
-      {"subject": "customer.*.customer.deleted", "handler": "on_customer_deleted"}
+      {
+        "subject": "customer.*.customer.deleted",
+        "handler": "on_customer_deleted"
+      }
     ]
   }
 }

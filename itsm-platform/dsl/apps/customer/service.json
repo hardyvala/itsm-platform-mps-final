@@ -1,34 +1,89 @@
 {
-  "version": "2.0",
-  "kind": "ServiceGraph",
   "metadata": {
     "service": "customer",
-    "database": "customer_db",
-    "port": 8002,
-    "package": "github.com/itsm/customer-service"
+    "version": "1.0"
   },
-
   "nodes": [
     {
       "name": "Customer",
       "table": "customers",
       "properties": [
-        {"name": "id", "type": "uuid", "primary": true},
-        {"name": "tenant_id", "type": "uuid", "required": true, "indexed": true},
-        {"name": "email", "type": "text", "required": true, "max_length": 255, "unique_per_tenant": true},
-        {"name": "name", "type": "text", "required": true, "max_length": 255},
-        {"name": "phone", "type": "text", "max_length": 20},
-        {"name": "company", "type": "text", "max_length": 255},
-        {"name": "is_active", "type": "boolean", "default": true, "indexed": true},
-        {"name": "timezone", "type": "text", "max_length": 50, "default": "UTC"},
-        {"name": "metadata", "type": "jsonb"},
-        {"name": "created_at", "type": "timestamp", "required": true, "default": "now()"},
-        {"name": "updated_at", "type": "timestamp", "required": true, "default": "now()"},
-        {"name": "deleted_at", "type": "timestamp"}
+        {
+          "name": "id",
+          "type": "uuid",
+          "primary": true
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "required": true,
+          "max_length": 255
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "max_length": 255
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "max_length": 20
+        },
+        {
+          "name": "company",
+          "type": "text",
+          "max_length": 255
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "default": true,
+          "indexed": true
+        },
+        {
+          "name": "timezone",
+          "type": "text",
+          "max_length": 50,
+          "default": "UTC"
+        },
+        {
+          "name": "metadata",
+          "type": "jsonb"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "required": true,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "required": true,
+          "default": "now()"
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp"
+        }
       ],
       "indexes": [
-        {"name": "idx_customers_tenant_email", "fields": ["tenant_id", "email"], "unique": true},
-        {"name": "idx_customers_tenant_active", "fields": ["tenant_id", "is_active"]}
+        {
+          "name": "idx_customers_tenant_email",
+          "fields": [
+            "tenant_id",
+            "email"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_customers_tenant_active",
+          "fields": [
+            "tenant_id",
+            "is_active"
+          ]
+        }
       ],
       "dal": {
         "soft_delete": true,
@@ -39,49 +94,85 @@
         "pre_create": {
           "enabled": true,
           "validations": [
-            {"field": "email", "rule": "email_format", "message": "Invalid email format"},
-            {"field": "name", "rule": "min_length", "value": 2, "message": "Name must be at least 2 characters"}
+            {
+              "field": "email",
+              "rule": "email_format",
+              "message": "Invalid email format"
+            },
+            {
+              "field": "name",
+              "rule": "min_length",
+              "value": 2,
+              "message": "Name must be at least 2 characters"
+            }
           ]
         },
         "post_create": {
           "enabled": true,
-          "actions": ["send_welcome_email"]
+          "actions": [
+            "sendOnboardMail"
+          ]
         },
         "pre_update": {
           "enabled": true,
           "validations": [
-            {"field": "email", "rule": "email_format", "message": "Invalid email format"}
+            {
+              "field": "email",
+              "rule": "email_format",
+              "message": "Invalid email format"
+            }
           ]
         },
         "post_update": {
           "enabled": true,
           "triggers": [
-            {"on_field_change": "email", "action": "send_email_change_notification"}
+            {
+              "on_field_change": "email",
+              "action": "sendEmailChangeNotification"
+            }
           ]
         },
         "pre_delete": {
           "enabled": true,
-          "checks": ["has_no_open_tickets"]
+          "checks": [
+            "has_no_open_tickets"
+          ]
         },
         "post_delete": {
           "enabled": true,
-          "actions": ["anonymize_data"]
+          "actions": [
+            "anonymizeData"
+          ]
         }
       },
       "graph": {
         "label": "Customer",
-        "sync_properties": ["id", "tenant_id", "name", "email", "is_active"],
+        "sync_properties": [
+          "id",
+          "tenant_id",
+          "name",
+          "email",
+          "is_active"
+        ],
         "edges": []
       }
     }
   ],
-
   "events": {
     "stream": "CUSTOMER_EVENTS",
     "publish": [
-      {"event": "customer.created", "subject": "customer.{tenant_id}.customer.created"},
-      {"event": "customer.updated", "subject": "customer.{tenant_id}.customer.updated"},
-      {"event": "customer.deleted", "subject": "customer.{tenant_id}.customer.deleted"}
+      {
+        "event": "customer.created",
+        "subject": "customer.{tenant_id}.customer.created"
+      },
+      {
+        "event": "customer.updated",
+        "subject": "customer.{tenant_id}.customer.updated"
+      },
+      {
+        "event": "customer.deleted",
+        "subject": "customer.{tenant_id}.customer.deleted"
+      }
     ],
     "subscribe": []
   }

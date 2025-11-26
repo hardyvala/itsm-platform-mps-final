@@ -9,8 +9,6 @@ import (
 
 // ServiceGraph represents the complete DSL for a service
 type ServiceGraph struct {
-	Version  string   `json:"version"`
-	Kind     string   `json:"kind"`
 	Metadata Metadata `json:"metadata"`
 	Nodes    []Node   `json:"nodes"`
 	Edges    []Edge   `json:"edges"`
@@ -18,11 +16,7 @@ type ServiceGraph struct {
 }
 
 type Metadata struct {
-	Service  string `json:"service"`
-	Database string `json:"database"`
-	Port     int    `json:"port"`
-	Package  string `json:"package,omitempty"`
-	Version  string `json:"version,omitempty"`
+	Service string `json:"service"`
 }
 
 // Node represents an entity (graph node = DB table)
@@ -38,17 +32,16 @@ type Node struct {
 }
 
 type Property struct {
-	Name            string      `json:"name"`
-	Type            string      `json:"type"`
-	Primary         bool        `json:"primary,omitempty"`
-	Required        bool        `json:"required,omitempty"`
-	Indexed         bool        `json:"indexed,omitempty"`
-	UniquePerTenant bool        `json:"unique_per_tenant,omitempty"`
-	MaxLength       int         `json:"max_length,omitempty"`
-	Default         interface{} `json:"default,omitempty"`
-	Values          []string    `json:"values,omitempty"` // For enum type
-	Precision       int         `json:"precision,omitempty"`
-	Scale           int         `json:"scale,omitempty"`
+	Name      string      `json:"name"`
+	Type      string      `json:"type"`
+	Primary   bool        `json:"primary,omitempty"`
+	Required  bool        `json:"required,omitempty"`
+	Indexed   bool        `json:"indexed,omitempty"`
+	MaxLength int         `json:"max_length,omitempty"`
+	Default   interface{} `json:"default,omitempty"`
+	Values    []string    `json:"values,omitempty"` // For enum type
+	Precision int         `json:"precision,omitempty"`
+	Scale     int         `json:"scale,omitempty"`
 }
 
 type Index struct {
