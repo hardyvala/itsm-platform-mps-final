@@ -10,7 +10,6 @@ import (
 // ServiceGraph represents the complete DSL for a service
 type ServiceGraph struct {
 	Version  string          `json:"version"`
-	Kind     string          `json:"kind"`
 	Metadata Metadata        `json:"metadata"`
 	Platform *PlatformConfig `json:"platform,omitempty"`
 	Nodes    []Node          `json:"nodes"`
@@ -19,17 +18,7 @@ type ServiceGraph struct {
 }
 
 type Metadata struct {
-	Service     string          `json:"service"`
-	Namespace   string          `json:"namespace,omitempty"`
-	Database    string          `json:"database"`
-	Host        string          `json:"host,omitempty"`
-	Port        int             `json:"port"`
-	Replicas    int             `json:"replicas,omitempty"`
-	Package     string          `json:"package,omitempty"`
-	Version     string          `json:"version,omitempty"`
-	Description string          `json:"description,omitempty"`
-	Resources   *ResourceConfig `json:"resources,omitempty"`
-	PoolSize    int             `json:"pool_size,omitempty"`
+	Service string `json:"service"`
 }
 
 type ResourceConfig struct {
@@ -44,9 +33,7 @@ type ResourceSpec struct {
 
 // Platform configuration
 type PlatformConfig struct {
-	Defaults  DefaultConfig   `json:"defaults"`
-	Messaging MessagingConfig `json:"messaging"`
-	Database  DatabaseConfig  `json:"database"`
+	Defaults DefaultConfig `json:"defaults"`
 }
 
 type DefaultConfig struct {
@@ -56,7 +43,6 @@ type DefaultConfig struct {
 	SoftDelete SoftDeleteConfig `json:"soft_delete"`
 	Versioning VersionConfig    `json:"versioning"`
 	Audit      AuditConfig      `json:"audit"`
-	Tenant     TenantConfig     `json:"tenant"`
 }
 
 type TimestampConfig struct {
@@ -81,30 +67,9 @@ type AuditConfig struct {
 	TrackChanges bool `json:"track_changes"`
 }
 
-type TenantConfig struct {
-	Isolation string `json:"isolation"`
-	Column    string `json:"column"`
-}
-
-type MessagingConfig struct {
-	Provider       string `json:"provider"`
-	Jetstream      bool   `json:"jetstream"`
-	URL            string `json:"url"`
-	SubjectPattern string `json:"subject_pattern"`
-}
-
-type DatabaseConfig struct {
-	Type       string   `json:"type"`
-	Version    string   `json:"version"`
-	Extensions []string `json:"extensions"`
-}
-
 // Node represents an entity (graph node = DB table)
 type Node struct {
 	Name           string             `json:"name"`
-	Table          string             `json:"table"`
-	Schema         string             `json:"schema,omitempty"`
-	Description    string             `json:"description,omitempty"`
 	Properties     []Property         `json:"properties"`
 	References     []Reference        `json:"references,omitempty"`
 	ManyToMany     []ManyToManyConfig `json:"many_to_many,omitempty"`

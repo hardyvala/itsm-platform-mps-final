@@ -1,10 +1,7 @@
 {
   "version": "2.0",
-  "kind": "ServiceGraph",
   "metadata": {
-    "service": "customer",
-    "namespace": "platform.customer",
-    "database": "customer_db"
+    "service": "customer"
   },
 
   "platform": {
@@ -28,31 +25,13 @@
       "audit": {
         "enabled": true,
         "track_changes": true
-      },
-      "tenant": {
-        "isolation": "schema",
-        "column": "tenant_id"
       }
-    },
-    "messaging": {
-      "provider": "nats",
-      "jetstream": true,
-      "url": "nats://nats-1:6222",
-      "subject_pattern": "platform.${app}.${tenant}.${entity}.${action}"
-    },
-    "database": {
-      "type": "postgresql",
-      "version": "18",
-      "extensions": ["age", "pg_trgm", "pgvector", "uuid-ossp"]
     }
   },
 
   "nodes": [
     {
       "name": "Customer",
-      "table": "customers",
-      "schema": "${tenant_schema}",
-      "description": "Customer/Contact for CRM",
       "properties": [
         {"name": "id", "type": "uuid", "primary": true, "generator": "uuid_v7"},
         {"name": "tenant_id", "type": "uuid", "required": true, "indexed": "btree", "immutable": true},
